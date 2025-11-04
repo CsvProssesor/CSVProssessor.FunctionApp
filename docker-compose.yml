@@ -1,0 +1,10 @@
+services:
+  csvprossessor.functionapp:
+    image: ${DOCKER_REGISTRY-}csvprossessorfunctionapp
+    build:
+      context: .
+      dockerfile: CSVProssessor.FunctionApp/Dockerfile
+    environment:
+      - AZURE_FUNCTIONS_ENVIRONMENT=Development
+    ports:
+      - "7071:80"

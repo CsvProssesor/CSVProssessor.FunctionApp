@@ -1,0 +1,4 @@
+services:
+  csvprossessor.functionapp:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
