@@ -1,10 +1,64 @@
+version: '3.8'
+
 services:
   csvprossessor.functionapp:
     image: ${DOCKER_REGISTRY-}csvprossessorfunctionapp
     build:
       context: .
       dockerfile: CSVProssessor.FunctionApp/Dockerfile
-    environment:
-      - AZURE_FUNCTIONS_ENVIRONMENT=Development
     ports:
       - "7071:80"
+    environment:
+      - COSMOS_CONNECTION_STRING=AccountEndpoint=https://cosmosdb:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30SGASXCF+V86fsXN8z8r7hJQXLvT80xg7agoQq+M/bLLvWXvgQ082dB94CY1DB==;
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    depends_on:
+      - cosmosdb
+      - minio
+    networks:
+      - csv-network
+
+  cosmosdb:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - AZURE_COSMOS_EMULATOR_PARTITION_COUNT=1
+      - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=false
+    volumes:
+      - cosmosdb_data:/data/db
+    networks:
+      - csv-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost:8081/_explorer/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - csv-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cosmosdb_data:
+  minio_data:
+
+networks:
+  csv-network:
+    driver: bridge  

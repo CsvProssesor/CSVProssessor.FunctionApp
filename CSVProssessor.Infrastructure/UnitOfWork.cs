@@ -1,90 +1,77 @@
 ﻿using CSVProssessor.Domain;
 using CSVProssessor.Domain.Entities;
+using CSVProssessor.Infrastructure.Commons;
 using CSVProssessor.Infrastructure.Interfaces;
-using Microsoft.EntityFrameworkCore.Storage;
+using CSVProssessor.Infrastructure.Repositories;
 using System.Linq.Expressions;
 
 namespace CSVProssessor.Infrastructure;
 
 public class UnitOfWork : IUnitOfWork
 {
-    private readonly AppDbContext _dbContext;
-    private IDbContextTransaction? _transaction;
+    private readonly CosmosDbContext _cosmosDbContext;
+    private readonly ICurrentTime _timeService;
+    private readonly IClaimsService _claimsService;
+    private IGenericRepository<CsvJob>? _csvJobRepository;
+    private IGenericRepository<CsvRecord>? _csvRecordRepository;
 
-    public UnitOfWork(AppDbContext dbContext, IGenericRepository<CsvJob> csvJobs, IGenericRepository<CsvRecord> csvRecords)
+    public UnitOfWork(CosmosDbContext cosmosDbContext, ICurrentTime timeService, IClaimsService claimsService)
     {
-        _dbContext = dbContext;
-        CsvJobs = csvJobs;
-        CsvRecords = csvRecords;
+        _cosmosDbContext = cosmosDbContext;
+        _timeService = timeService;
+        _claimsService = claimsService;
     }
 
-    public IGenericRepository<CsvJob> CsvJobs { get; }
-    public IGenericRepository<CsvRecord> CsvRecords { get; }
+    public IGenericRepository<CsvJob> CsvJobs
+    {
+        get
+        {
+            if (_csvJobRepository == null)
+            {
+                _csvJobRepository = new CosmosRepository<CsvJob>(_cosmosDbContext.CsvJobContainer, 
+                    _timeService, _claimsService);
+            }
+            return _csvJobRepository;
+        }
+    }
+
+    public IGenericRepository<CsvRecord> CsvRecords
+    {
+        get
+        {
+            if (_csvRecordRepository == null)
+            {
+                _csvRecordRepository = new CosmosRepository<CsvRecord>(_cosmosDbContext.CsvRecordContainer, 
+                    _timeService, _claimsService);
+            }
+            return _csvRecordRepository;
+        }
+    }
 
     public void Dispose()
     {
-        _dbContext.Dispose();
+        _cosmosDbContext?.Dispose();
     }
 
     public async Task<int> SaveChangesAsync()
     {
-        return await _dbContext.SaveChangesAsync();
+        // Cosmos DB saves automatically when we call CreateItemAsync, UpsertItemAsync, DeleteItemAsync
+        // This method is kept for compatibility
+        return await Task.FromResult(1);
     }
 
     // Where
     public IQueryable<T> Where<T>(Expression<Func<T, bool>> predicate) where T : class
     {
-        return _dbContext.Set<T>().Where(predicate);
+        // Cosmos DB doesn't support full LINQ translation
+        // This is a limitation - you should use repository methods instead
+        throw new NotImplementedException("Use repository methods directly for querying Cosmos DB");
     }
 
     // Select
     public IQueryable<TResult> Select<T, TResult>(Expression<Func<T, TResult>> selector) where T : class
     {
-        return _dbContext.Set<T>().Select(selector);
-    }
-
-    // Transaction support
-    public async Task BeginTransactionAsync()
-    {
-        if (_transaction != null) return;
-        _transaction = await _dbContext.Database.BeginTransactionAsync();
-    }
-
-    public async Task CommitAsync()
-    {
-        try
-        {
-            if (_transaction != null)
-            {
-                await _dbContext.SaveChangesAsync();
-                await _transaction.CommitAsync();
-            }
-        }
-        finally
-        {
-            await DisposeTransactionAsync();
-        }
-    }
-
-    public async Task RollbackAsync()
-    {
-        try
-        {
-            if (_transaction != null)
-                await _transaction.RollbackAsync();
-        }
-        finally
-        {
-            await DisposeTransactionAsync();
-        }
-    }
-
-    private async Task DisposeTransactionAsync()
-    {
-        if (_transaction != null)
-        {
-            await _transaction.DisposeAsync();
-            _transaction = null;
-        }
+        // Cosmos DB doesn't support full LINQ translation
+        throw new NotImplementedException("Use repository methods directly for querying Cosmos DB");
     }
 }
