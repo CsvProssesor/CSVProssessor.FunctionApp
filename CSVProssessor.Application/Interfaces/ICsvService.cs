@@ -44,5 +44,14 @@
         /// Downloads files from MinIO and returns them as a zip archive stream.
         /// </summary>
         Task<Stream> ExportAllCsvFilesAsync();
+
+        /// <summary>
+        /// Parse multipart/form-data from request body and extract file information.
+        /// Handles boundary extraction, content parsing, and file content extraction.
+        /// </summary>
+        /// <param name="contentType">Content-Type header value</param>
+        /// <param name="body">Request body stream</param>
+        /// <returns>Tuple containing filename and file bytes</returns>
+        Task<(string fileName, byte[] fileBytes)> ParseMultipartFormDataAsync(string contentType, Stream body);
     }
 }

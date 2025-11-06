@@ -123,48 +123,7 @@ namespace CSVProssessor.Application.Services
             }
         }
 
-        /// <summary>
-        /// Parse CSV file into CsvRecord list
-        /// </summary>
-        private async Task<List<CsvRecord>> ParseCsvAsync(Guid jobId, string fileName, Stream fileStream)
-        {
-            var records = new List<CsvRecord>();
-            using var reader = new StreamReader(fileStream);
 
-            // Đọc header
-            var headerLine = await reader.ReadLineAsync();
-            if (string.IsNullOrWhiteSpace(headerLine))
-                return records;
-
-            var headers = headerLine.Split(',').Select(h => h.Trim()).ToArray();
-
-            string? line;
-            while ((line = await reader.ReadLineAsync()) != null)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                var values = line.Split(',').Select(v => v.Trim()).ToArray();
-
-                // Create JSON object as string and parse it
-                var jsonDict = new Dictionary<string, object>();
-                for (int i = 0; i < headers.Length && i < values.Length; i++)
-                {
-                    jsonDict[headers[i]] = values[i];
-                }
-
-                var jsonString = JsonSerializer.Serialize(jsonDict);
-                var jsonDoc = JsonDocument.Parse(jsonString);
-
-                records.Add(new CsvRecord
-                {
-                    JobId = jobId,
-                    FileName = fileName,
-                    ImportedAt = DateTime.UtcNow,
-                    Data = jsonDoc
-                });
-            }
-
-            return records;
-        }
 
         /// <summary>
         /// Detect changes and publish notification to RabbitMQ topic "csv-changes-topic"
@@ -346,6 +305,43 @@ namespace CSVProssessor.Application.Services
             return zipStream;
         }
 
+
+        /// <summary>
+        /// Parse multipart/form-data from request body and extract file information.
+        /// Handles boundary extraction, content parsing, and file content extraction.
+        /// </summary>
+        public async Task<(string fileName, byte[] fileBytes)> ParseMultipartFormDataAsync(string contentType, Stream body)
+        {
+            if (string.IsNullOrEmpty(contentType) || !contentType.Contains("multipart/form-data"))
+                throw ErrorHelper.BadRequest($"Invalid Content-Type: {contentType}. Expected multipart/form-data");
+
+            // Read raw body
+            using var memoryStream = new MemoryStream();
+            await body.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+
+            // Extract boundary from Content-Type
+            var boundary = ExtractBoundary(contentType);
+
+            // If no boundary in header, try to find from body
+            if (string.IsNullOrEmpty(boundary))
+            {
+                boundary = ExtractBoundaryFromBody(memoryStream);
+            }
+
+            if (string.IsNullOrEmpty(boundary))
+                throw ErrorHelper.BadRequest($"Missing boundary in multipart/form-data. Content-Type: {contentType}");
+
+            // Parse multipart form data
+            var (fileName, fileBytes) = await ParseMultipartFormData(memoryStream, boundary);
+
+            if (string.IsNullOrEmpty(fileName) || fileBytes == null || fileBytes.Length == 0)
+                throw ErrorHelper.BadRequest("No file found in request");
+
+            return (fileName, fileBytes);
+        }
+
+        #region
         private async Task AddFileToZipArchiveAsync(ZipArchive archive, string fileName)
         {
             try
@@ -361,5 +357,151 @@ namespace CSVProssessor.Application.Services
                 throw ErrorHelper.Internal($"Lỗi khi download file '{fileName}': {ex.Message}");
             }
         }
+
+        private string? ExtractBoundary(string contentTypeHeader)
+        {
+            try
+            {
+                var parts = contentTypeHeader.Split(';');
+                foreach (var part in parts)
+                {
+                    var trimmed = part.Trim();
+                    if (trimmed.StartsWith("boundary="))
+                    {
+                        var boundary = trimmed.Substring("boundary=".Length).Trim('"', ' ');
+                        return boundary;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+            return null;
+        }
+
+        private string? ExtractBoundaryFromBody(MemoryStream stream)
+        {
+            try
+            {
+                stream.Position = 0;
+                using var reader = new StreamReader(stream);
+                var firstLine = reader.ReadLine();
+                stream.Position = 0;
+
+                // Boundary is usually the first line of multipart body, starting with --
+                if (!string.IsNullOrEmpty(firstLine) && firstLine.StartsWith("--"))
+                {
+                    return firstLine.Substring(2); // Remove "--"
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+            return null;
+        }
+
+        private async Task<(string? fileName, byte[]? fileBytes)> ParseMultipartFormData(MemoryStream stream, string boundary)
+        {
+            try
+            {
+                stream.Position = 0;
+                var reader = new StreamReader(stream);
+                var content = await reader.ReadToEndAsync();
+
+                // Find all parts
+                var boundaryDelimiter = $"--{boundary}";
+                var parts = content.Split(new[] { boundaryDelimiter }, StringSplitOptions.None);
+
+                foreach (var part in parts)
+                {
+                    if (part.Contains("Content-Disposition") && part.Contains("filename="))
+                    {
+                        // Extract filename
+                        var fileNameMatch = System.Text.RegularExpressions.Regex.Match(part, @"filename=""([^""]+)""");
+                        if (!fileNameMatch.Success)
+                            fileNameMatch = System.Text.RegularExpressions.Regex.Match(part, @"filename=([^\r\n;]+)");
+
+                        string fileName = fileNameMatch.Success ? fileNameMatch.Groups[1].Value.Trim() : "uploaded_file.csv";
+
+                        // Extract file content (after empty line)
+                        var lines = part.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                        int contentStartIndex = -1;
+
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            if (string.IsNullOrWhiteSpace(lines[i]))
+                            {
+                                contentStartIndex = i + 1;
+                                break;
+                            }
+                        }
+
+                        if (contentStartIndex > 0 && contentStartIndex < lines.Length)
+                        {
+                            var fileContent = string.Join("\n", lines.Skip(contentStartIndex));
+
+                            // Remove trailing boundary markers and whitespace
+                            fileContent = System.Text.RegularExpressions.Regex.Replace(fileContent, @"--\s*$", "");
+                            fileContent = fileContent.TrimEnd('\r', '\n', '-');
+
+                            var fileBytes = System.Text.Encoding.UTF8.GetBytes(fileContent);
+                            return (fileName, fileBytes);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ErrorHelper.Internal($"Error parsing multipart form data: {ex.Message}");
+            }
+
+            return (null, null);
+        }
+        /// <summary>
+        /// Parse CSV file into CsvRecord list
+        /// </summary>
+        private async Task<List<CsvRecord>> ParseCsvAsync(Guid jobId, string fileName, Stream fileStream)
+        {
+            var records = new List<CsvRecord>();
+            using var reader = new StreamReader(fileStream);
+
+            // Đọc header
+            var headerLine = await reader.ReadLineAsync();
+            if (string.IsNullOrWhiteSpace(headerLine))
+                return records;
+
+            var headers = headerLine.Split(',').Select(h => h.Trim()).ToArray();
+
+            string? line;
+            while ((line = await reader.ReadLineAsync()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                var values = line.Split(',').Select(v => v.Trim()).ToArray();
+
+                // Create JSON object as string and parse it
+                var jsonDict = new Dictionary<string, object>();
+                for (int i = 0; i < headers.Length && i < values.Length; i++)
+                {
+                    jsonDict[headers[i]] = values[i];
+                }
+
+                var jsonString = JsonSerializer.Serialize(jsonDict);
+                var jsonDoc = JsonDocument.Parse(jsonString);
+
+                records.Add(new CsvRecord
+                {
+                    JobId = jobId,
+                    FileName = fileName,
+                    ImportedAt = DateTime.UtcNow,
+                    Data = jsonDoc
+                });
+            }
+
+            return records;
+        }
+        #endregion
+
     }
 }
