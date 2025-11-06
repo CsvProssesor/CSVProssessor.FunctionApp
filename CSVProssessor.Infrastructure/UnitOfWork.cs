@@ -50,7 +50,9 @@ public class UnitOfWork : IUnitOfWork
 
     public void Dispose()
     {
-        _cosmosDbContext?.Dispose();
+        // DO NOT dispose CosmosDbContext - it's a singleton managed by DI container
+        // Disposing it here causes "Cannot access a disposed 'CosmosClient'" errors
+        // The DI container will handle its disposal when the application shuts down
     }
 
     public async Task<int> SaveChangesAsync()

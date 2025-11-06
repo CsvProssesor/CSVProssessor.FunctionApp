@@ -9,9 +9,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVProssessor.Domain", "CSV
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVProssessor.Application", "CSVProssessor.Application\CSVProssessor.Application.csproj", "{98F1C9FF-7B12-3162-B3C0-DA1D64B3FBE5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVProssessor.FunctionApp", "CSVProssessor.FunctionApp\CSVProssessor.FunctionApp.csproj", "{B9085A38-E4DD-4B2B-8CCC-68D58A3C08C6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVProssessor.FunctionApp1", "CSVProssessor.FunctionApp\CSVProssessor.FunctionApp1.csproj", "{B9085A38-E4DD-4B2B-8CCC-68D58A3C08C6}"
 EndProject
 Project("{E53339B2-1760-4266-BCC7-CA923CBCF16C}") = "docker-compose", "docker-compose.dcproj", "{81DDED9D-158B-E303-5F62-77A2896D2A5A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVProssessor.FunctionApp2", "..\CSVProssessor.FunctionApp2\CSVProssessor.FunctionApp2.csproj", "{F7D253F5-F41A-4B43-9E14-164B9664F522}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{81DDED9D-158B-E303-5F62-77A2896D2A5A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{81DDED9D-158B-E303-5F62-77A2896D2A5A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{81DDED9D-158B-E303-5F62-77A2896D2A5A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7D253F5-F41A-4B43-9E14-164B9664F522}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7D253F5-F41A-4B43-9E14-164B9664F522}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7D253F5-F41A-4B43-9E14-164B9664F522}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7D253F5-F41A-4B43-9E14-164B9664F522}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
