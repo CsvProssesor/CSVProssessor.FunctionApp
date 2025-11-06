@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
-namespace CSVProssessor.FunctionApp.Functions
+namespace CSVProssessor.FunctionApp1.Functions
 {
     public class HelloWorldFunction
     {

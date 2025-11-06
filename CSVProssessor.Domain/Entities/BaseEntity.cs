@@ -1,10 +1,12 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace CSVProssessor.Domain.Entities
 {
     public class BaseEntity
     {
         [Key]
+        [JsonPropertyName("id")] // Serialize as 'id' (lowercase) for consistency with Cosmos DB
         public Guid Id { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

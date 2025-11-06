@@ -1,4 +1,4 @@
-using CSVProssessor.FunctionApp.Architecture;
+using CSVProssessor.FunctionApp2.Architecture;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Hosting;
 

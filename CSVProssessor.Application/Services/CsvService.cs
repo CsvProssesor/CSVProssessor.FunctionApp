@@ -104,16 +104,20 @@ namespace CSVProssessor.Application.Services
             if (records == null || records.Count == 0)
                 throw ErrorHelper.BadRequest("Không có records để lưu vào database.");
 
-            // 3. Add all records to database
-            foreach (var record in records)
+            // 3. Add records to database in batches to avoid timeout
+            const int batchSize = 50; // Insert 50 records at a time
+            for (int i = 0; i < records.Count; i += batchSize)
             {
-                await _unitOfWork.CsvRecords.AddAsync(record);
+                var batch = records.Skip(i).Take(batchSize).ToList();
+                foreach (var record in batch)
+                {
+                    await _unitOfWork.CsvRecords.AddAsync(record);
+                }
+                // Save each batch
+                await _unitOfWork.SaveChangesAsync();
             }
 
-            // 4. Save changes to database
-            await _unitOfWork.SaveChangesAsync();
-
-            // 5. Update job status to Completed
+            // 4. Update job status to Completed
             var csvJob = await _unitOfWork.CsvJobs.FirstOrDefaultAsync(x => x.Id == jobId);
             if (csvJob != null)
             {
@@ -443,8 +447,8 @@ namespace CSVProssessor.Application.Services
                             var fileContent = string.Join("\n", lines.Skip(contentStartIndex));
 
                             // Remove trailing boundary markers and whitespace
-                            fileContent = System.Text.RegularExpressions.Regex.Replace(fileContent, @"--\s*$", "");
-                            fileContent = fileContent.TrimEnd('\r', '\n', '-');
+                            fileContent = System.Text.RegularExpressions.Regex.Replace(fileContent, @"-+\s*$", "");
+                            fileContent = fileContent.TrimEnd('\r', '\n');
 
                             var fileBytes = System.Text.Encoding.UTF8.GetBytes(fileContent);
                             return (fileName, fileBytes);
@@ -461,45 +465,141 @@ namespace CSVProssessor.Application.Services
         }
         /// <summary>
         /// Parse CSV file into CsvRecord list
+        /// Skips multipart form-data headers if present
+        /// Auto-detects if CSV has headers or is header-less
         /// </summary>
         private async Task<List<CsvRecord>> ParseCsvAsync(Guid jobId, string fileName, Stream fileStream)
         {
             var records = new List<CsvRecord>();
-            using var reader = new StreamReader(fileStream);
-
-            // Đọc header
-            var headerLine = await reader.ReadLineAsync();
-            if (string.IsNullOrWhiteSpace(headerLine))
-                return records;
-
-            var headers = headerLine.Split(',').Select(h => h.Trim()).ToArray();
+            
+            fileStream.Position = 0;
+            using var contentReader = new StreamReader(fileStream);
 
             string? line;
-            while ((line = await reader.ReadLineAsync()) != null)
+            var lines = new List<string>();
+            
+            // Read all lines and skip multipart headers
+            while ((line = await contentReader.ReadLineAsync()) != null)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                lines.Add(line);
+            }
+
+            // Find the actual CSV content start
+            // Skip lines that are multipart headers (Content-Disposition, Content-Type, empty line)
+            int csvStartIndex = 0;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                // Skip multipart headers
+                if (lines[i].StartsWith("Content-Disposition:") || 
+                    lines[i].StartsWith("Content-Type:") ||
+                    string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    continue;
+                }
+                
+                // First non-header line is either the CSV header or first data line
+                csvStartIndex = i;
+                break;
+            }
+
+            // Ensure we have CSV content
+            if (csvStartIndex >= lines.Count)
+                return records;
+
+            // Detect if first line is a header or data
+            // Headers typically don't contain commas followed by numbers/dates/emails, or are descriptive
+            var firstLine = lines[csvStartIndex];
+            if (string.IsNullOrWhiteSpace(firstLine))
+                return records;
+
+            var firstLineValues = firstLine.Split(',').Select(v => v.Trim()).ToArray();
+            
+            // Simple heuristic: if values look like actual data (contain @ for emails, dates, etc), treat all as data
+            bool isHeaderless = IsDataLine(firstLineValues);
+            
+            string[] headers;
+            int dataStartIndex;
+
+            if (isHeaderless)
+            {
+                // No header - generate column names as Column1, Column2, etc.
+                headers = Enumerable.Range(1, firstLineValues.Length)
+                    .Select(i => $"Column{i}")
+                    .ToArray();
+                dataStartIndex = csvStartIndex;
+            }
+            else
+            {
+                // First line is header
+                headers = firstLineValues;
+                dataStartIndex = csvStartIndex + 1;
+            }
+
+            // Parse CSV data rows
+            for (int i = dataStartIndex; i < lines.Count; i++)
+            {
+                line = lines[i];
+                
+                // Skip empty lines and multipart boundary markers
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--"))
+                    continue;
+
                 var values = line.Split(',').Select(v => v.Trim()).ToArray();
 
                 // Create JSON object as string and parse it
                 var jsonDict = new Dictionary<string, object>();
-                for (int i = 0; i < headers.Length && i < values.Length; i++)
+                for (int j = 0; j < headers.Length && j < values.Length; j++)
                 {
-                    jsonDict[headers[i]] = values[i];
+                    jsonDict[headers[j]] = values[j];
                 }
 
                 var jsonString = JsonSerializer.Serialize(jsonDict);
-                var jsonDoc = JsonDocument.Parse(jsonString);
 
                 records.Add(new CsvRecord
                 {
+                    Id = Guid.NewGuid(),
                     JobId = jobId,
                     FileName = fileName,
                     ImportedAt = DateTime.UtcNow,
-                    Data = jsonDoc
+                    Data = jsonString
                 });
             }
 
             return records;
+        }
+
+        /// <summary>
+        /// Detect if a line is data (not headers)
+        /// Heuristic: check if values contain typical data patterns like emails, dates, numbers, etc.
+        /// </summary>
+        private bool IsDataLine(string[] values)
+        {
+            if (values.Length == 0)
+                return false;
+
+            int dataIndicators = 0;
+
+            foreach (var value in values)
+            {
+                // Check for email pattern
+                if (value.Contains("@") && value.Contains("."))
+                    dataIndicators++;
+                
+                // Check for date pattern (YYYY-MM-DD or similar)
+                if (System.Text.RegularExpressions.Regex.IsMatch(value, @"\d{4}-\d{2}-\d{2}"))
+                    dataIndicators++;
+                
+                // Check for GUID-like pattern (uppercase alphanumeric)
+                if (System.Text.RegularExpressions.Regex.IsMatch(value, @"^[A-Z0-9]{8,}$"))
+                    dataIndicators++;
+                
+                // Check for numeric value
+                if (double.TryParse(value, out _))
+                    dataIndicators++;
+            }
+
+            // If at least 30% of values look like data, it's a data line
+            return dataIndicators >= (values.Length * 0.3);
         }
         #endregion
 

@@ -40,7 +40,7 @@ public class UnitOfWork : IUnitOfWork
         {
             if (_csvRecordRepository == null)
             {
-                _csvRecordRepository = new CosmosRepository<CsvRecord>(_cosmosDbContext.CsvRecordContainer,
+                _csvRecordRepository = new CsvRecordRepository(_cosmosDbContext.CsvRecordContainer,
                     _timeService, _claimsService);
             }
             return _csvRecordRepository;

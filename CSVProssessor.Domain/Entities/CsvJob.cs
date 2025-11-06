@@ -6,7 +6,8 @@ namespace CSVProssessor.Domain.Entities
     public class CsvJob : BaseEntity
     {
         /// <summary>
-        /// CosmosDB requires 'id' property in lowercase
+        /// Override Id property to map to 'id' for Cosmos SDK (Newtonsoft.Json)
+        /// BaseEntity already has [JsonPropertyName("id")] for System.Text.Json responses
         /// </summary>
         [JsonProperty("id")]
         public new Guid Id

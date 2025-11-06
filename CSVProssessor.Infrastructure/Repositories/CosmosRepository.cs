@@ -296,7 +296,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
     /// <summary>
     /// Get partition key value from entity - override in derived classes if needed
     /// </summary>
-    private string GetPartitionKey(TEntity entity)
+    protected virtual string GetPartitionKey(TEntity entity)
     {
         // Use Id as partition key (most reliable for CosmosDB)
         return entity.Id.ToString();

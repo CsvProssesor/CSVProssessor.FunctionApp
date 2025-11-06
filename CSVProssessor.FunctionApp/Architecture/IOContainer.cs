@@ -2,6 +2,7 @@
 using CSVProssessor.Application.Interfaces.Common;
 using CSVProssessor.Application.Services;
 using CSVProssessor.Application.Services.Common;
+using CSVProssessor.Application.Worker;
 using CSVProssessor.Domain;
 using CSVProssessor.Infrastructure;
 using CSVProssessor.Infrastructure.Commons;
@@ -11,7 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 
-namespace CSVProssessor.FunctionApp.Architecture
+namespace CSVProssessor.FunctionApp1.Architecture
 {
     public static class IocContainer
     {
@@ -42,6 +43,10 @@ namespace CSVProssessor.FunctionApp.Architecture
             services.AddScoped<IBlobService, BlobService>();
             services.AddScoped<IRabbitMqService, RabbitMqService>();
             services.AddScoped<ICsvService, CsvService>();
+
+            // Register BackgroundServices
+            services.AddHostedService<CsvImportQueueListenerService>();
+            //services.AddHostedService<ChangeDetectionBackgroundService>();
 
             // Configure RabbitMQ Connection Factory (not connection itself)
             services.AddSingleton<IConnectionFactory>(sp =>
