@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "CSVProssessor.FunctionApp2": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7033"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "containerRunArguments": "--init",
+      "httpPort": 30425,
+      "useSSL": false
+    }
+  }
+}
