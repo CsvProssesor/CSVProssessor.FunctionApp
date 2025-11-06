@@ -8,5 +8,11 @@
             },
             "enableLiveMetricsFilters": true
         }
+    },
+    "functionTimeout": "00:05:00",
+    "extensions": {
+        "durableTask": {
+            "maxStringLengthInLogs": 4096
+        }
     }
 }

@@ -5,7 +5,7 @@ using System.Net;
 
 namespace CSVProssessor.Domain;
 
-public class CosmosDbContext : IDisposable
+public class CosmosDbContext : IDisposable, IAsyncDisposable
 {
     private readonly CosmosClient _cosmosClient;
     private Database? _database;
@@ -37,37 +37,25 @@ public class CosmosDbContext : IDisposable
 
     public async Task InitializeAsync(string databaseId)
     {
-        Console.WriteLine($"[CosmosDbContext] === Starting Cosmos DB Initialization ===");
-        Console.WriteLine($"[CosmosDbContext] Database ID: {databaseId}");
-        Console.WriteLine($"[CosmosDbContext] CosmosClient initialized: {_cosmosClient != null}");
-        
         const int maxRetries = 5;
         const int delayMs = 2000;
         
         try
         {
-            // Create database if not exists - with retry logic
-            Console.WriteLine("[CosmosDbContext] Attempting to create/get database...");
             Database? databaseResponse_db = null;
             
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 try
                 {
-                    Console.WriteLine($"[CosmosDbContext] Database creation attempt {attempt}/{maxRetries}...");
                     var databaseResponse = await _cosmosClient!.CreateDatabaseIfNotExistsAsync(databaseId);
                     databaseResponse_db = databaseResponse.Database;
-                    Console.WriteLine($"[CosmosDbContext] ✓ Database '{databaseId}' created/ready");
-                    Console.WriteLine($"[CosmosDbContext] Database ID: {databaseResponse_db.Id}");
-                    Console.WriteLine($"[CosmosDbContext] Database Status: {databaseResponse.StatusCode}");
                     break;
                 }
-                catch (HttpRequestException ex) when (attempt < maxRetries)
+                catch (HttpRequestException) when (attempt < maxRetries)
                 {
-                    Console.WriteLine($"[CosmosDbContext] ⚠ Attempt {attempt} failed: {ex.Message}");
                     if (attempt < maxRetries)
                     {
-                        Console.WriteLine($"[CosmosDbContext] Retrying in {delayMs}ms...");
                         await Task.Delay(delayMs);
                     }
                     else
@@ -80,30 +68,36 @@ public class CosmosDbContext : IDisposable
             _database = databaseResponse_db;
 
             // Create CsvJob container with retry
-            Console.WriteLine("[CosmosDbContext] Attempting to create 'CsvJobs' container...");
+            // Note: If container already exists with different partition key, 
+            // you need to delete the container first
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 try
                 {
                     var csvJobResponse = await _database!.CreateContainerIfNotExistsAsync(
                         id: "CsvJobs",
-                        partitionKeyPath: "/Status"
+                        partitionKeyPath: "/id"
                     );
                     _csvJobContainer = csvJobResponse.Container;
-                    Console.WriteLine($"[CosmosDbContext] ✓ Container 'CsvJobs' created/ready");
-                    Console.WriteLine($"[CosmosDbContext] CsvJobs Status: {csvJobResponse.StatusCode}");
                     break;
                 }
-                catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable && attempt < maxRetries)
+                catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict && attempt < maxRetries)
                 {
-                    Console.WriteLine($"[CosmosDbContext] ⚠ CsvJobs creation attempt {attempt} failed: {ex.Message}");
-                    Console.WriteLine($"[CosmosDbContext] Retrying in {delayMs}ms...");
+                    // Container exists with different partition key - delete and recreate
+                    try
+                    {
+                        await _database!.GetContainer("CsvJobs").DeleteContainerAsync();
+                        await Task.Delay(delayMs);
+                    }
+                    catch { }
+                }
+                catch (CosmosException) when (attempt < maxRetries)
+                {
                     await Task.Delay(delayMs);
                 }
             }
 
             // Create CsvRecord container with retry
-            Console.WriteLine("[CosmosDbContext] Attempting to create 'CsvRecords' container...");
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 try
@@ -113,45 +107,53 @@ public class CosmosDbContext : IDisposable
                         partitionKeyPath: "/JobId"
                     );
                     _csvRecordContainer = csvRecordResponse.Container;
-                    Console.WriteLine($"[CosmosDbContext] ✓ Container 'CsvRecords' created/ready");
-                    Console.WriteLine($"[CosmosDbContext] CsvRecords Status: {csvRecordResponse.StatusCode}");
                     break;
                 }
-                catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable && attempt < maxRetries)
+                catch (CosmosException) when (attempt < maxRetries)
                 {
-                    Console.WriteLine($"[CosmosDbContext] ⚠ CsvRecords creation attempt {attempt} failed: {ex.Message}");
-                    Console.WriteLine($"[CosmosDbContext] Retrying in {delayMs}ms...");
                     await Task.Delay(delayMs);
                 }
             }
-            
-            Console.WriteLine($"[CosmosDbContext] === Cosmos DB Initialization Completed Successfully ===");
         }
-        catch (HttpRequestException ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[CosmosDbContext] ✗ HttpRequestException: {ex.Message}");
-            Console.WriteLine($"[CosmosDbContext] Status Code: {ex.Data}");
-            Console.WriteLine($"[CosmosDbContext] Inner Exception: {ex.InnerException?.Message}");
-            throw;
-        }
-        catch (CosmosException ex)
-        {
-            Console.WriteLine($"[CosmosDbContext] ✗ CosmosException: {ex.Message}");
-            Console.WriteLine($"[CosmosDbContext] Status Code: {ex.StatusCode}");
-            Console.WriteLine($"[CosmosDbContext] SubStatus Code: {ex.SubStatusCode}");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[CosmosDbContext] ✗ ERROR: {ex.GetType().Name}");
-            Console.WriteLine($"[CosmosDbContext] Message: {ex.Message}");
-            Console.WriteLine($"[CosmosDbContext] StackTrace: {ex.StackTrace}");
             throw;
         }
     }
 
+    #region Disposal
+
+    private bool _disposed;
+
     public void Dispose()
     {
-        _cosmosClient?.Dispose();
+        if (_disposed) return;
+
+        try
+        {
+            _cosmosClient?.Dispose();
+        }
+        catch { }
+
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+
+        try
+        {
+            // CosmosClient in some SDK versions does not implement DisposeAsync.
+            // Call the synchronous Dispose to ensure resources are released.
+            _cosmosClient?.Dispose();
+        }
+        catch { }
+
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion
 }

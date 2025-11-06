@@ -1,8 +1,5 @@
 using CSVProssessor.Domain;
-using CSVProssessor.Infrastructure;
-using CSVProssessor.Infrastructure.Commons;
-using CSVProssessor.Infrastructure.Interfaces;
-using CSVProssessor.Infrastructure.Repositories;
+using CSVProssessor.FunctionApp.Architecture;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,14 +21,7 @@ builder.Services.AddSingleton(sp =>
     return context;
 });
 
-// Register common services
-builder.Services.AddScoped<ICurrentTime, CurrentTime>();
-builder.Services.AddScoped<IClaimsService, ClaimsService>();
-builder.Services.AddScoped<ILoggerService, LoggerService>();
-
-// Register UnitOfWork
-builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(CosmosRepository<>));
+builder.Services.SetupIocContainer();
 
 builder.ConfigureFunctionsWebApplication();
 

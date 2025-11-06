@@ -11,24 +11,62 @@ namespace CSVProssessor.Infrastructure.Commons
     /// </summary>
     public class RabbitMqService : IRabbitMqService
     {
-        // Kết nối tới RabbitMQ broker
-        private readonly IConnection _connection;
+        // Connection factory - để tạo connection on-demand
+        private readonly IConnectionFactory _connectionFactory;
 
+        // Lazy connection - chỉ tạo khi cần
+        private IConnection _connection;
+        
         // Channel - Kênh giao tiếp để gửi/nhận message
-        private readonly IChannel _channel;
+        private IChannel _channel;
 
         // Logger - Ghi log hoạt động của dịch vụ
         private readonly ILogger<RabbitMqService> _logger;
 
+        private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1);
+
         /// <summary>
         /// Constructor - Khởi tạo kết nối và channel khi dịch vụ được tạo
         /// </summary>
-        public RabbitMqService(IConnection connection, ILogger<RabbitMqService> logger)
+        public RabbitMqService(IConnectionFactory connectionFactory, ILogger<RabbitMqService> logger)
         {
-            _connection = connection;
+            _connectionFactory = connectionFactory;
             _logger = logger;
-            // Tạo channel từ kết nối (channel được dùng để gửi/nhận message)
-            _channel = connection.CreateChannelAsync().Result;
+        }
+
+        /// <summary>
+        /// Đảm bảo connection và channel đã được khởi tạo
+        /// </summary>
+        private async Task EnsureConnectionAsync()
+        {
+            if (_channel != null && !_channel.IsClosed)
+                return;
+
+            await _connectionLock.WaitAsync();
+            try
+            {
+                if (_channel != null && !_channel.IsClosed)
+                    return;
+
+                try
+                {
+                    _logger.LogInformation("Attempting to connect to RabbitMQ...");
+                    _connection = await _connectionFactory.CreateConnectionAsync();
+                    _logger.LogInformation("RabbitMQ connection created successfully");
+                    
+                    _channel = await _connection.CreateChannelAsync();
+                    _logger.LogInformation("RabbitMQ channel created successfully");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Failed to connect to RabbitMQ: {ex.Message}");
+                    throw;
+                }
+            }
+            finally
+            {
+                _connectionLock.Release();
+            }
         }
 
         /// <summary>
@@ -41,6 +79,9 @@ namespace CSVProssessor.Infrastructure.Commons
         {
             try
             {
+                // Đảm bảo connection và channel đã khởi tạo
+                await EnsureConnectionAsync();
+
                 // Chuyển đổi message thành chuỗi JSON
                 var jsonMessage = JsonSerializer.Serialize(message);
                 var body = Encoding.UTF8.GetBytes(jsonMessage);
@@ -151,6 +192,8 @@ namespace CSVProssessor.Infrastructure.Commons
             _channel?.Dispose();
             // Đóng kết nối tới RabbitMQ
             _connection?.Dispose();
+            // Giải phóng semaphore
+            _connectionLock?.Dispose();
         }
     }
 }

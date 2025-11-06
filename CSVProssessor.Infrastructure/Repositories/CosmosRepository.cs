@@ -298,20 +298,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
     /// </summary>
     private string GetPartitionKey(TEntity entity)
     {
-        // Default: use Status property if available (for CsvJob)
-        var statusProperty = typeof(TEntity).GetProperty("Status");
-        if (statusProperty != null)
-        {
-            return statusProperty.GetValue(entity)?.ToString() ?? "Default";
-        }
-
-        // Fallback: use JobId property if available (for CsvRecord)
-        var jobIdProperty = typeof(TEntity).GetProperty("JobId");
-        if (jobIdProperty != null)
-        {
-            return jobIdProperty.GetValue(entity)?.ToString() ?? "Default";
-        }
-
+        // Use Id as partition key (most reliable for CosmosDB)
         return entity.Id.ToString();
     }
 }

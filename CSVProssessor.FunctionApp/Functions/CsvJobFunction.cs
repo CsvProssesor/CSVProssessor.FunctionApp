@@ -1,172 +1,214 @@
-using CSVProssessor.Domain.Entities;
+using CSVProssessor.Application.Interfaces;
 using CSVProssessor.Infrastructure.Interfaces;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using System.Net;
 
 namespace CSVProssessor.FunctionApp.Functions;
 
 public class CsvJobFunction
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICsvService _csvService;
+    private readonly ILogger<CsvJobFunction> _logger;
 
-    public CsvJobFunction(IUnitOfWork unitOfWork)
+    public CsvJobFunction(IUnitOfWork unitOfWork, ICsvService csvService, ILogger<CsvJobFunction> logger)
     {
         _unitOfWork = unitOfWork;
+        _csvService = csvService;
+        _logger = logger;
     }
 
-    [FunctionName("CreateCsvJob")]
-    public async Task<IActionResult> CreateCsvJob(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "csv-jobs")] HttpRequest req,
-        ILogger log)
+    [Function("ImportCsvJob")]
+    public async Task<HttpResponseData> ImportCsvJob(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "csv/import")] HttpRequestData req)
     {
+        _logger.LogInformation("ImportCsvJob function called.");
+
         try
         {
-            log.LogInformation("Creating CSV Job");
-
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var job = JsonConvert.DeserializeObject<CsvJob>(requestBody);
-
-            if (job == null)
+            // Log all headers for debugging
+            foreach (var header in req.Headers)
             {
-                return new BadRequestObjectResult("Invalid request body");
+                _logger.LogInformation($"Header: {header.Key} = {string.Join(", ", header.Value)}");
             }
 
-            // Create new job
-            job.Id = Guid.NewGuid();
-            await _unitOfWork.CsvJobs.AddAsync(job);
-            await _unitOfWork.SaveChangesAsync();
+            // Đọc raw body
+            using var memoryStream = new MemoryStream();
+            await req.Body.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
 
-            return new CreatedResult($"csv-jobs/{job.Id}", job);
+            _logger.LogInformation($"Request body size: {memoryStream.Length} bytes");
+
+            // Kiểm tra content type
+            if (!req.Headers.Contains("Content-Type"))
+            {
+                var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await errorResponse.WriteStringAsync("Content-Type header is missing");
+                return errorResponse;
+            }
+
+            var contentType = req.Headers.GetValues("Content-Type").First();
+            _logger.LogInformation($"Content-Type: {contentType}");
+
+            if (!contentType.Contains("multipart/form-data"))
+            {
+                var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await errorResponse.WriteStringAsync($"Invalid Content-Type: {contentType}. Expected multipart/form-data");
+                return errorResponse;
+            }
+
+            // Extract boundary từ Content-Type
+            var boundary = ExtractBoundary(contentType);
+            _logger.LogInformation($"Boundary from header: '{boundary}'");
+
+            // Nếu không có boundary trong header, thử tìm từ body
+            if (string.IsNullOrEmpty(boundary))
+            {
+                boundary = ExtractBoundaryFromBody(memoryStream);
+                _logger.LogInformation($"Boundary from body: '{boundary}'");
+            }
+
+            if (string.IsNullOrEmpty(boundary))
+            {
+                var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await errorResponse.WriteStringAsync($"Missing boundary in multipart/form-data. Content-Type: {contentType}");
+                return errorResponse;
+            }
+
+            // Parse multipart form data
+            var (fileName, fileBytes) = await ParseMultipartFormData(memoryStream, boundary);
+
+            if (string.IsNullOrEmpty(fileName) || fileBytes == null || fileBytes.Length == 0)
+            {
+                var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await errorResponse.WriteStringAsync("No file found in request");
+                return errorResponse;
+            }
+
+            _logger.LogInformation($"File received: {fileName}, Size: {fileBytes.Length} bytes");
+
+            // Tạo FormFile object từ bytes
+            using var fileStream = new MemoryStream(fileBytes);
+            var formFile = new FormFile(fileStream, 0, fileBytes.Length, "file", fileName);
+
+            // Gọi hàm ImportCsvAsync từ CsvService
+            var result = await _csvService.ImportCsvAsync(formFile);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(result);
+            return response;
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Error creating CSV Job");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            _logger.LogError($"Error in ImportCsvJob: {ex.Message}\n{ex.StackTrace}");
+            var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await response.WriteStringAsync($"Error: {ex.Message}");
+            return response;
         }
     }
 
-    [FunctionName("GetCsvJob")]
-    public async Task<IActionResult> GetCsvJob(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "csv-jobs/{id}")] HttpRequest req,
-        string id,
-        ILogger log)
+    private string ExtractBoundary(string contentTypeHeader)
     {
         try
         {
-            log.LogInformation($"Getting CSV Job: {id}");
-
-            if (!Guid.TryParse(id, out var jobId))
+            var parts = contentTypeHeader.Split(';');
+            foreach (var part in parts)
             {
-                return new BadRequestObjectResult("Invalid ID format");
+                var trimmed = part.Trim();
+                if (trimmed.StartsWith("boundary="))
+                {
+                    var boundary = trimmed.Substring("boundary=".Length).Trim('"', ' ');
+                    return boundary;
+                }
             }
-
-            var job = await _unitOfWork.CsvJobs.GetByIdAsync(jobId);
-
-            if (job == null)
-            {
-                return new NotFoundResult();
-            }
-
-            return new OkObjectResult(job);
         }
         catch (Exception ex)
         {
-            log.LogError(ex, $"Error getting CSV Job: {id}");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            _logger.LogError($"Error extracting boundary: {ex.Message}");
         }
+        return null;
     }
 
-    [FunctionName("GetAllCsvJobs")]
-    public async Task<IActionResult> GetAllCsvJobs(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "csv-jobs")] HttpRequest req,
-        ILogger log)
+    private string ExtractBoundaryFromBody(MemoryStream stream)
     {
         try
         {
-            log.LogInformation("Getting all CSV Jobs");
+            stream.Position = 0;
+            using var reader = new StreamReader(stream);
+            var firstLine = reader.ReadLine();
+            stream.Position = 0;
 
-            var jobs = await _unitOfWork.CsvJobs.GetAllAsync();
-
-            return new OkObjectResult(jobs);
+            // Boundary thường là dòng đầu tiên của multipart body, bắt đầu với --
+            if (!string.IsNullOrEmpty(firstLine) && firstLine.StartsWith("--"))
+            {
+                return firstLine.Substring(2); // Bỏ đi "--"
+            }
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Error getting all CSV Jobs");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            _logger.LogError($"Error extracting boundary from body: {ex.Message}");
         }
+        return null;
     }
 
-    [FunctionName("UpdateCsvJob")]
-    public async Task<IActionResult> UpdateCsvJob(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "csv-jobs/{id}")] HttpRequest req,
-        string id,
-        ILogger log)
+    private async Task<(string fileName, byte[] fileBytes)> ParseMultipartFormData(MemoryStream stream, string boundary)
     {
         try
         {
-            log.LogInformation($"Updating CSV Job: {id}");
+            stream.Position = 0;
+            var reader = new StreamReader(stream);
+            var content = await reader.ReadToEndAsync();
 
-            if (!Guid.TryParse(id, out var jobId))
+            // Tìm tất cả parts
+            var boundaryDelimiter = $"--{boundary}";
+            var parts = content.Split(new[] { boundaryDelimiter }, StringSplitOptions.None);
+
+            foreach (var part in parts)
             {
-                return new BadRequestObjectResult("Invalid ID format");
+                if (part.Contains("Content-Disposition") && part.Contains("filename="))
+                {
+                    // Extract filename
+                    var fileNameMatch = System.Text.RegularExpressions.Regex.Match(part, @"filename=""([^""]+)""");
+                    if (!fileNameMatch.Success)
+                        fileNameMatch = System.Text.RegularExpressions.Regex.Match(part, @"filename=([^\r\n;]+)");
+
+                    string fileName = fileNameMatch.Success ? fileNameMatch.Groups[1].Value.Trim() : "uploaded_file.csv";
+
+                    // Extract file content (after empty line)
+                    var lines = part.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                    int contentStartIndex = -1;
+
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (string.IsNullOrWhiteSpace(lines[i]))
+                        {
+                            contentStartIndex = i + 1;
+                            break;
+                        }
+                    }
+
+                    if (contentStartIndex > 0 && contentStartIndex < lines.Length)
+                    {
+                        var fileContent = string.Join("\n", lines.Skip(contentStartIndex));
+                        
+                        // Remove trailing boundary markers and whitespace
+                        fileContent = System.Text.RegularExpressions.Regex.Replace(fileContent, @"--\s*$", "");
+                        fileContent = fileContent.TrimEnd('\r', '\n', '-');
+
+                        var fileBytes = System.Text.Encoding.UTF8.GetBytes(fileContent);
+                        return (fileName, fileBytes);
+                    }
+                }
             }
-
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var updatedJob = JsonConvert.DeserializeObject<CsvJob>(requestBody);
-
-            if (updatedJob == null)
-            {
-                return new BadRequestObjectResult("Invalid request body");
-            }
-
-            updatedJob.Id = jobId;
-            await _unitOfWork.CsvJobs.Update(updatedJob);
-            await _unitOfWork.SaveChangesAsync();
-
-            return new OkObjectResult(updatedJob);
         }
         catch (Exception ex)
         {
-            log.LogError(ex, $"Error updating CSV Job: {id}");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            _logger.LogError($"Error parsing multipart form data: {ex.Message}\n{ex.StackTrace}");
         }
-    }
 
-    [FunctionName("DeleteCsvJob")]
-    public async Task<IActionResult> DeleteCsvJob(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "csv-jobs/{id}")] HttpRequest req,
-        string id,
-        ILogger log)
-    {
-        try
-        {
-            log.LogInformation($"Deleting CSV Job: {id}");
-
-            if (!Guid.TryParse(id, out var jobId))
-            {
-                return new BadRequestObjectResult("Invalid ID format");
-            }
-
-            var job = await _unitOfWork.CsvJobs.GetByIdAsync(jobId);
-
-            if (job == null)
-            {
-                return new NotFoundResult();
-            }
-
-            await _unitOfWork.CsvJobs.SoftRemove(job);
-            await _unitOfWork.SaveChangesAsync();
-
-            return new NoContentResult();
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, $"Error deleting CSV Job: {id}");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
-        }
+        return (null, null);
     }
 }
