@@ -1,14 +1,13 @@
-using Microsoft.Azure.Functions.Worker;
+using CSVProssessor.FunctionApp.Architecture;
 using Microsoft.Azure.Functions.Worker.Builder;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
+builder.Services.SetupIocContainer();
+
 builder.ConfigureFunctionsWebApplication();
 
-builder.Services
-    .AddApplicationInsightsTelemetryWorkerService()
-    .ConfigureFunctionsApplicationInsights();
+var host = builder.Build();
 
-builder.Build().Run();
+host.Run();
