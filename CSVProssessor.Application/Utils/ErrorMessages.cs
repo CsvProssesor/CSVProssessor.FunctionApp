@@ -2,6 +2,4 @@
 
 public static class ErrorMessages
 {
-
-
 }

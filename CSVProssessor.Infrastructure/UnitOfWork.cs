@@ -1,6 +1,5 @@
 ﻿using CSVProssessor.Domain;
 using CSVProssessor.Domain.Entities;
-using CSVProssessor.Infrastructure.Commons;
 using CSVProssessor.Infrastructure.Interfaces;
 using CSVProssessor.Infrastructure.Repositories;
 using System.Linq.Expressions;
@@ -28,7 +27,7 @@ public class UnitOfWork : IUnitOfWork
         {
             if (_csvJobRepository == null)
             {
-                _csvJobRepository = new CosmosRepository<CsvJob>(_cosmosDbContext.CsvJobContainer, 
+                _csvJobRepository = new CosmosRepository<CsvJob>(_cosmosDbContext.CsvJobContainer,
                     _timeService, _claimsService);
             }
             return _csvJobRepository;
@@ -41,7 +40,7 @@ public class UnitOfWork : IUnitOfWork
         {
             if (_csvRecordRepository == null)
             {
-                _csvRecordRepository = new CosmosRepository<CsvRecord>(_cosmosDbContext.CsvRecordContainer, 
+                _csvRecordRepository = new CosmosRepository<CsvRecord>(_cosmosDbContext.CsvRecordContainer,
                     _timeService, _claimsService);
             }
             return _csvRecordRepository;

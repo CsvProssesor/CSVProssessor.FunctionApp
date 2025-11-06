@@ -32,13 +32,11 @@ namespace CSVProssessor.Application.Services.Common
                     "MinIO configuration is missing. Please set MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY environment variables.");
             }
 
-
             // Remove http:// or https:// prefix if present - MinIO expects just host:port
             var cleanEndpoint = endpoint
                 .Replace("https://", "", StringComparison.OrdinalIgnoreCase)
                 .Replace("http://", "", StringComparison.OrdinalIgnoreCase)
                 .Trim();
-
 
             // Kết nối MinIO không dùng SSL (vì đang dùng IP:port hoặc HTTP)
             _minioClient = new MinioClient()

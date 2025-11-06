@@ -166,7 +166,6 @@ namespace CSVProssessor.Application.Services
             return records;
         }
 
-
         /// <summary>
         /// Detect changes and publish notification to RabbitMQ topic "csv-changes-topic"
         /// Called by ChangeDetectionBackgroundService to check for changes and notify all instances.
@@ -243,7 +242,6 @@ namespace CSVProssessor.Application.Services
             return response;
         }
 
-
         public async Task<ListCsvFilesResponseDto> ListAllCsvFilesAsync()
         {
             // 1. Query all CSV import jobs from database
@@ -295,7 +293,6 @@ namespace CSVProssessor.Application.Services
             return response;
         }
 
-
         public async Task<Stream> ExportSingleCsvFileAsync(string fileName)
         {
             // 1. Validate input
@@ -321,7 +318,6 @@ namespace CSVProssessor.Application.Services
                 throw ErrorHelper.Internal($"Lỗi khi download file '{fileName}': {ex.Message}");
             }
         }
-
 
         public async Task<Stream> ExportAllCsvFilesAsync()
         {

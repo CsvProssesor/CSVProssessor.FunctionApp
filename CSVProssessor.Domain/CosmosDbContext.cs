@@ -1,6 +1,4 @@
 using Microsoft.Azure.Cosmos;
-using CSVProssessor.Domain.Entities;
-using Newtonsoft.Json;
 using System.Net;
 
 namespace CSVProssessor.Domain;
@@ -39,11 +37,11 @@ public class CosmosDbContext : IDisposable, IAsyncDisposable
     {
         const int maxRetries = 5;
         const int delayMs = 2000;
-        
+
         try
         {
             Database? databaseResponse_db = null;
-            
+
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 try
@@ -64,11 +62,11 @@ public class CosmosDbContext : IDisposable, IAsyncDisposable
                     }
                 }
             }
-            
+
             _database = databaseResponse_db;
 
             // Create CsvJob container with retry
-            // Note: If container already exists with different partition key, 
+            // Note: If container already exists with different partition key,
             // you need to delete the container first
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
@@ -155,5 +153,5 @@ public class CosmosDbContext : IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    #endregion
+    #endregion Disposal
 }

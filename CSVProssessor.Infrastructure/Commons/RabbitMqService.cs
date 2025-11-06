@@ -16,7 +16,7 @@ namespace CSVProssessor.Infrastructure.Commons
 
         // Lazy connection - chỉ tạo khi cần
         private IConnection _connection;
-        
+
         // Channel - Kênh giao tiếp để gửi/nhận message
         private IChannel _channel;
 
@@ -53,7 +53,7 @@ namespace CSVProssessor.Infrastructure.Commons
                     _logger.LogInformation("Attempting to connect to RabbitMQ...");
                     _connection = await _connectionFactory.CreateConnectionAsync();
                     _logger.LogInformation("RabbitMQ connection created successfully");
-                    
+
                     _channel = await _connection.CreateChannelAsync();
                     _logger.LogInformation("RabbitMQ channel created successfully");
                 }

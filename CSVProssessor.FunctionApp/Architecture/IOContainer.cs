@@ -2,6 +2,7 @@
 using CSVProssessor.Application.Interfaces.Common;
 using CSVProssessor.Application.Services;
 using CSVProssessor.Application.Services.Common;
+using CSVProssessor.Domain;
 using CSVProssessor.Infrastructure;
 using CSVProssessor.Infrastructure.Commons;
 using CSVProssessor.Infrastructure.Interfaces;
@@ -12,9 +13,6 @@ using RabbitMQ.Client;
 
 namespace CSVProssessor.FunctionApp.Architecture
 {
-    internal interface IOContainer
-    {
-    }
     public static class IocContainer
     {
         public static IServiceCollection SetupIocContainer(this IServiceCollection services)
@@ -26,6 +24,7 @@ namespace CSVProssessor.FunctionApp.Architecture
 
             //Add HttpContextAccessor for role-based checks
             services.AddHttpContextAccessor();
+            services.SetupCosmosDb();
 
             //services.SetupJwt();
             // services.SetupGraphQl();
@@ -74,5 +73,21 @@ namespace CSVProssessor.FunctionApp.Architecture
             return services;
         }
 
+        public static IServiceCollection SetupCosmosDb(this IServiceCollection services)
+        {
+            var connectionString = Environment.GetEnvironmentVariable("CosmosDbConnectionString");
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                throw new InvalidOperationException("CosmosDbConnectionString is not configured");
+            }
+            services.AddSingleton(sp =>
+            {
+                var context = new CosmosDbContext(connectionString);
+                var initTask = context.InitializeAsync("CSVProcessor");
+                initTask.GetAwaiter().GetResult();
+                return context;
+            });
+            return services;
+        }
     }
 }

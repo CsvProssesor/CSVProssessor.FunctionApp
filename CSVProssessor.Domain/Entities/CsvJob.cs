@@ -9,8 +9,8 @@ namespace CSVProssessor.Domain.Entities
         /// CosmosDB requires 'id' property in lowercase
         /// </summary>
         [JsonProperty("id")]
-        public new Guid Id 
-        { 
+        public new Guid Id
+        {
             get => base.Id;
             set => base.Id = value;
         }

@@ -193,7 +193,7 @@ public class CsvJobFunction
                     if (contentStartIndex > 0 && contentStartIndex < lines.Length)
                     {
                         var fileContent = string.Join("\n", lines.Skip(contentStartIndex));
-                        
+
                         // Remove trailing boundary markers and whitespace
                         fileContent = System.Text.RegularExpressions.Regex.Replace(fileContent, @"--\s*$", "");
                         fileContent = fileContent.TrimEnd('\r', '\n', '-');
