@@ -19,8 +19,10 @@ public class CosmosDbContext : IDisposable
     public CosmosDbContext(string connectionString)
     {
         // Skip SSL validation for Cosmos DB Emulator (self-signed certificate)
+        // Use Gateway Mode for better compatibility with Emulator in Docker
         var options = new CosmosClientOptions
         {
+            ConnectionMode = ConnectionMode.Gateway,
             HttpClientFactory = () =>
             {
                 var handler = new HttpClientHandler
@@ -77,27 +79,51 @@ public class CosmosDbContext : IDisposable
             
             _database = databaseResponse_db;
 
-            // Create CsvJob container
+            // Create CsvJob container with retry
             Console.WriteLine("[CosmosDbContext] Attempting to create 'CsvJobs' container...");
-            var csvJobResponse = await _database!.CreateContainerIfNotExistsAsync(
-                id: "CsvJobs",
-                partitionKeyPath: "/Status",
-                throughput: 400
-            );
-            _csvJobContainer = csvJobResponse.Container;
-            Console.WriteLine($"[CosmosDbContext] ✓ Container 'CsvJobs' created/ready");
-            Console.WriteLine($"[CosmosDbContext] CsvJobs Status: {csvJobResponse.StatusCode}");
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    var csvJobResponse = await _database!.CreateContainerIfNotExistsAsync(
+                        id: "CsvJobs",
+                        partitionKeyPath: "/Status"
+                    );
+                    _csvJobContainer = csvJobResponse.Container;
+                    Console.WriteLine($"[CosmosDbContext] ✓ Container 'CsvJobs' created/ready");
+                    Console.WriteLine($"[CosmosDbContext] CsvJobs Status: {csvJobResponse.StatusCode}");
+                    break;
+                }
+                catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable && attempt < maxRetries)
+                {
+                    Console.WriteLine($"[CosmosDbContext] ⚠ CsvJobs creation attempt {attempt} failed: {ex.Message}");
+                    Console.WriteLine($"[CosmosDbContext] Retrying in {delayMs}ms...");
+                    await Task.Delay(delayMs);
+                }
+            }
 
-            // Create CsvRecord container
+            // Create CsvRecord container with retry
             Console.WriteLine("[CosmosDbContext] Attempting to create 'CsvRecords' container...");
-            var csvRecordResponse = await _database.CreateContainerIfNotExistsAsync(
-                id: "CsvRecords",
-                partitionKeyPath: "/JobId",
-                throughput: 400
-            );
-            _csvRecordContainer = csvRecordResponse.Container;
-            Console.WriteLine($"[CosmosDbContext] ✓ Container 'CsvRecords' created/ready");
-            Console.WriteLine($"[CosmosDbContext] CsvRecords Status: {csvRecordResponse.StatusCode}");
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    var csvRecordResponse = await _database!.CreateContainerIfNotExistsAsync(
+                        id: "CsvRecords",
+                        partitionKeyPath: "/JobId"
+                    );
+                    _csvRecordContainer = csvRecordResponse.Container;
+                    Console.WriteLine($"[CosmosDbContext] ✓ Container 'CsvRecords' created/ready");
+                    Console.WriteLine($"[CosmosDbContext] CsvRecords Status: {csvRecordResponse.StatusCode}");
+                    break;
+                }
+                catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable && attempt < maxRetries)
+                {
+                    Console.WriteLine($"[CosmosDbContext] ⚠ CsvRecords creation attempt {attempt} failed: {ex.Message}");
+                    Console.WriteLine($"[CosmosDbContext] Retrying in {delayMs}ms...");
+                    await Task.Delay(delayMs);
+                }
+            }
             
             Console.WriteLine($"[CosmosDbContext] === Cosmos DB Initialization Completed Successfully ===");
         }
