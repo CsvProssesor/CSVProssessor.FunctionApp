@@ -9,6 +9,7 @@ services:
     ports:
       - "7071:80"
     environment:
+      - FUNCTIONS_WORKER_RUNTIME=dotnet-isolated
       - CosmosDbConnectionString=AccountEndpoint=https://cosmosdb:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
@@ -31,6 +32,7 @@ services:
     ports:
       - "7072:80"
     environment:
+      - FUNCTIONS_WORKER_RUNTIME=dotnet-isolated
       - CosmosDbConnectionString=AccountEndpoint=https://cosmosdb:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
