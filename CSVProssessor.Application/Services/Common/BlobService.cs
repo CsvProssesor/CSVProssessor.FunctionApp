@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IO.Compression;
+using System.Text;
 using CSVProssessor.Application.Interfaces.Common;
 using CSVProssessor.Application.Utils;
 using CSVProssessor.Infrastructure.Interfaces;
@@ -209,7 +210,7 @@ public class BlobService : IBlobService
     }
 
     /// <summary>
-    /// Zip tất cả file trong bucket và upload file zip lên bucket trong folder "export"
+    ///     Zip tất cả file trong bucket và upload file zip lên bucket trong folder "export"
     /// </summary>
     /// <param name="outputBlobName">Tên file zip output (vd: "export-20251110.zip")</param>
     /// <returns>SAS URL của file zip</returns>
@@ -228,7 +229,7 @@ public class BlobService : IBlobService
             // Tạo memory stream để lưu trữ zip
             using (var zipStream = new MemoryStream())
             {
-                using (var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
+                using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
                 {
                     // List all objects trong bucket
                     var listArgs = new ListObjectsArgs()
@@ -237,7 +238,7 @@ public class BlobService : IBlobService
 
                     var observable = client.ListObjectsEnumAsync(listArgs);
 
-                    int fileCount = 0;
+                    var fileCount = 0;
                     await foreach (var obj in observable)
                     {
                         // Skip folder và file trong export folder
@@ -257,7 +258,7 @@ public class BlobService : IBlobService
                             fileStream.Position = 0;
 
                             // Thêm vào zip archive
-                            var entry = archive.CreateEntry(obj.Key, System.IO.Compression.CompressionLevel.Optimal);
+                            var entry = archive.CreateEntry(obj.Key, CompressionLevel.Optimal);
                             using (var entryStream = entry.Open())
                             {
                                 await fileStream.CopyToAsync(entryStream);
@@ -295,7 +296,7 @@ public class BlobService : IBlobService
     }
 
     /// <summary>
-    /// Upload single file vào folder "export" trong bucket và trả về SAS URL
+    ///     Upload single file vào folder "export" trong bucket và trả về SAS URL
     /// </summary>
     /// <param name="filePath">Đường dẫn file cần upload (tên file trong bucket)</param>
     /// <returns>SAS URL của file</returns>
@@ -348,7 +349,7 @@ public class BlobService : IBlobService
     }
 
     /// <summary>
-    /// Generate Presigned URL (SAS URL) cho file
+    ///     Generate Presigned URL (SAS URL) cho file
     /// </summary>
     private async Task<string> GeneratePresignedUrlAsync(string filePath)
     {

@@ -11,6 +11,7 @@ using CSVProssessor.Infrastructure.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
+using Resend;
 
 namespace Csv.FuncApp1.IOContainer;
 
@@ -26,6 +27,7 @@ public static class IocContainer
         //Add HttpContextAccessor for role-based checks
         services.AddHttpContextAccessor();
         services.SetupCosmosDb();
+        services.SetupReSendService();
 
         //services.SetupJwt();
         // services.SetupGraphQl();
@@ -39,6 +41,7 @@ public static class IocContainer
         services.AddScoped<IClaimsService, ClaimsService>();
         services.AddScoped<ICurrentTime, CurrentTime>();
         services.AddScoped<ILoggerService, LoggerService>();
+        services.AddScoped<IEmailService, EmailService>();
 
         services.AddScoped<IBlobService, BlobService>();
         services.AddScoped<IRabbitMqService, RabbitMqService>();
@@ -82,6 +85,20 @@ public static class IocContainer
         return services;
     }
 
+    public static IServiceCollection SetupReSendService(this IServiceCollection services)
+    {
+        services.AddOptions();
+        services.AddHttpClient<ResendClient>();
+        services.Configure<ResendClientOptions>(o =>
+        {
+            o.ApiToken = Environment.GetEnvironmentVariable("RESEND_APITOKEN")!;
+        });
+        services.AddTransient<IResend, ResendClient>();
+
+        return services;
+    }
+
+    
     public static IServiceCollection SetupCosmosDb(this IServiceCollection services)
     {
         var connectionString = Environment.GetEnvironmentVariable("CosmosDbConnectionString");

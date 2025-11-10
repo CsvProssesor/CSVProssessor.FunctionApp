@@ -37,8 +37,7 @@ public class CsvImportQueueListenerService : BackgroundService
             "csv-import-queue",
             true,
             false,
-            false,
-            null);
+            false);
 
         // Thiết lập QoS - mỗi consumer nhận tối đa 1 message
         await channel.BasicQosAsync(0, 1, false);

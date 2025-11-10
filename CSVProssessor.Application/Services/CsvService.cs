@@ -6,6 +6,7 @@ using CSVProssessor.Application.Interfaces;
 using CSVProssessor.Application.Interfaces.Common;
 using CSVProssessor.Application.Utils;
 using CSVProssessor.Domain.DTOs.CsvJobDTOs;
+using CSVProssessor.Domain.DTOs.EmailDTOs;
 using CSVProssessor.Domain.Entities;
 using CSVProssessor.Domain.Enums;
 using CSVProssessor.Infrastructure.Interfaces;
@@ -16,14 +17,16 @@ namespace CSVProssessor.Application.Services;
 public class CsvService : ICsvService
 {
     private readonly IBlobService _blobService;
+    private readonly IEmailService _emailService;
     private readonly IRabbitMqService _rabbitMqService;
     private readonly IUnitOfWork _unitOfWork;
 
-    public CsvService(IUnitOfWork unitOfWork, IBlobService blobService, IRabbitMqService rabbitMqService)
+    public CsvService(IUnitOfWork unitOfWork, IBlobService blobService, IRabbitMqService rabbitMqService, IEmailService emailService)
     {
         _unitOfWork = unitOfWork;
         _blobService = blobService;
         _rabbitMqService = rabbitMqService;
+        _emailService = emailService;
     }
 
     public async Task<ImportCsvResponseDto> ImportCsvAsync(IFormFile file)
@@ -87,26 +90,21 @@ public class CsvService : ICsvService
 
     public async Task SaveCsvRecordsAsync(Guid jobId, string fileName)
     {
-        // 1. Download file from MinIO
         using var fileStream = await _blobService.DownloadFileAsync(fileName);
 
-        // 2. Parse CSV file
         var records = await ParseCsvAsync(jobId, fileName, fileStream);
 
         if (records == null || records.Count == 0)
             throw ErrorHelper.BadRequest("Không có records để lưu vào database.");
 
-        // 3. Add records to database in batches to avoid timeout
-        const int batchSize = 50; // Insert 50 records at a time
+        const int batchSize = 50;
         for (var i = 0; i < records.Count; i += batchSize)
         {
             var batch = records.Skip(i).Take(batchSize).ToList();
             foreach (var record in batch) await _unitOfWork.CsvRecords.AddAsync(record);
-            // Save each batch
             await _unitOfWork.SaveChangesAsync();
         }
 
-        // 4. Update job status to Completed
         var csvJob = await _unitOfWork.CsvJobs.FirstOrDefaultAsync(x => x.Id == jobId);
         if (csvJob != null)
         {
@@ -126,6 +124,37 @@ public class CsvService : ICsvService
         };
 
         await _rabbitMqService.PublishToTopicAsync("csv-changes-topic", message);
+    }
+
+    public async Task SubscribeToDatabaseChangesAsync(IEmailService emailService)
+    {
+        try
+        {
+            Console.WriteLine("[INFO] Starting to subscribe to csv-changes-topic...");
+            await _rabbitMqService.SubscribeToTopicAsync("csv-changes-topic", async message =>
+            {
+                try
+                {
+                    Console.WriteLine($"[INFO] Received message: {message}");
+                    // When database change is detected from Cosmos, send email notification
+                    var emailRequest = new EmailRequestDto
+                    {
+                        To = "phuctg1@fpt.com"
+                    };
+                    await emailService.SendDatabaseChanges(emailRequest);
+                    Console.WriteLine($"[SUCCESS] Email sent for database change");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Failed to send email: {ex.Message}, {ex.StackTrace}");
+                }
+            });
+            Console.WriteLine("[INFO] Subscription started successfully, waiting for messages...");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Failed to subscribe to topic: {ex.Message}, {ex.StackTrace}");
+        }
     }
 
     public async Task LogCsvChangesAsync()

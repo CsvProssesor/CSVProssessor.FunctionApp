@@ -1,4 +1,5 @@
 using System.Net;
+using System.Web;
 using CSVProssessor.Application.Interfaces;
 using CSVProssessor.Application.Interfaces.Common;
 using Microsoft.Azure.Functions.Worker;
@@ -44,7 +45,7 @@ public class ExportCsvFunction
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new
             {
-                sasUrl = sasUrl,
+                sasUrl,
                 fileName = zipFileName,
                 message = "CSV files exported successfully"
             });
@@ -69,7 +70,7 @@ public class ExportCsvFunction
         {
             _logger.LogInformation("Export single CSV file requested");
 
-            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var query = HttpUtility.ParseQueryString(req.Url.Query);
             var fileName = query["fileName"];
 
             if (string.IsNullOrWhiteSpace(fileName))
@@ -86,8 +87,8 @@ public class ExportCsvFunction
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new
             {
-                sasUrl = sasUrl,
-                fileName = fileName,
+                sasUrl,
+                fileName,
                 message = "CSV file exported successfully"
             });
 

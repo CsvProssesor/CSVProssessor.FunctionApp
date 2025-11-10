@@ -10,7 +10,9 @@
     "RABBITMQ_HOST": "localhost",
     "RABBITMQ_PORT": "5672",
     "RABBITMQ_USER": "guest",
-    "RABBITMQ_PASSWORD": "guest"
+    "RABBITMQ_PASSWORD": "guest",
+    "RESEND_APITOKEN": "re_gQNBXJvY_ANFdgQphKQBxdW5DNf2UG6Zk",
+    "RESEND_FROM": "noreply@fpt-devteam.fun"
   },
   "Host": {
     "LocalHttpPort": 7072

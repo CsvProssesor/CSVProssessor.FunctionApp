@@ -1,5 +1,7 @@
 ﻿using Csv.FuncApp2.IOContainer;
 using CSVProssessor.Application.Interfaces;
+using CSVProssessor.Application.Interfaces.Common;
+using CSVProssessor.Domain.DTOs.EmailDTOs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,11 +17,5 @@ builder.Services
     .ConfigureFunctionsApplicationInsights();
 
 var host = builder.Build();
-
-using (var scope = host.Services.CreateScope())
-{
-    var csvService = scope.ServiceProvider.GetRequiredService<ICsvService>();
-    _ = csvService.LogCsvChangesAsync();
-}
 
 host.Run();
