@@ -1,0 +1,4 @@
+services:
+  csv.funcapp2:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development

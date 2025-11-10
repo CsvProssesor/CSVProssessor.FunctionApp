@@ -4,7 +4,8 @@
       "commandName": "DockerCompose",
       "commandVersion": "1.0",
       "serviceActions": {
-        "csvprossessor.functionapp": "StartDebugging"
+        "csvprossessor.functionapp": "StartDebugging",
+        "csv.funcapp2": "StartDebugging"
       }
     }
   }

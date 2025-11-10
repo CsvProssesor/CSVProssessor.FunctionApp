@@ -1,16 +1,11 @@
-version: '3.8'
-
 services:
-  csvprossessor.functionapp:
-    image: ${DOCKER_REGISTRY-}csvprossessorfunctionapp
+  csv.funcapp1:
+    image: ${DOCKER_REGISTRY-}csvfuncapp1
     build:
       context: .
-      dockerfile: CSVProssessor.FunctionApp/Dockerfile
-    ports:
-      - "7071:80"
+      dockerfile: Csv.FuncApp1/Dockerfile
     environment:
-      - FUNCTIONS_WORKER_RUNTIME=dotnet-isolated
-      - CosmosDbConnectionString=AccountEndpoint=https://cosmosdb:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;
+      - CosmosDbConnectionString=AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
@@ -18,22 +13,15 @@ services:
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=guest
       - RABBITMQ_PASSWORD=guest
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     networks:
       - csv-network
-
-  csvprossessor.functionapp2:
-    image: ${DOCKER_REGISTRY-}csvprossessorfunctionapp2
+  csv.funcapp2:
+    image: ${DOCKER_REGISTRY-}csvfuncapp2
     build:
       context: .
-      dockerfile: CSVProssessor.FunctionApp2/Dockerfile
-    ports:
-      - "7072:80"
+      dockerfile: Csv.FuncApp2/Dockerfile
     environment:
-      - FUNCTIONS_WORKER_RUNTIME=dotnet-isolated
-      - CosmosDbConnectionString=AccountEndpoint=https://cosmosdb:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;
+      - CosmosDbConnectionString=AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
@@ -41,34 +29,8 @@ services:
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=guest
       - RABBITMQ_PASSWORD=guest
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     networks:
       - csv-network
-
-  rabbitmq:
-    image: rabbitmq:3.12-management-alpine
-    container_name: csvprossessor_rabbitmq_app
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - csv-network
-
-volumes:
-  rabbitmq_data:
-
 networks:
   csv-network:
     external: true

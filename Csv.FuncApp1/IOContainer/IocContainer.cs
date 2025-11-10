@@ -12,7 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 
-namespace Csv.FunctionApp1.Architecture
+namespace Csv.FuncApp1.IOContainer
 {
     public static class IocContainer
     {
@@ -49,7 +49,7 @@ namespace Csv.FunctionApp1.Architecture
             //services.AddHostedService<ChangeDetectionBackgroundService>();
 
             // Configure RabbitMQ Connection Factory (not connection itself)
-            services.AddSingleton<IConnectionFactory>(sp =>
+            services.AddSingleton<RabbitMQ.Client.IConnectionFactory>(sp =>
             {
                 var configuration = sp.GetRequiredService<IConfiguration>();
                 var rabbitmqHost = Environment.GetEnvironmentVariable("RABBITMQ_HOST") ?? configuration["RabbitMQ:Host"] ?? "localhost";
