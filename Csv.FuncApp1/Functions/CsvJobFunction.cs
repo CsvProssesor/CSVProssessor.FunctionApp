@@ -25,6 +25,8 @@ public class CsvJobFunction
     {
         try
         {
+            _logger.LogInformation("Received CSV import request");
+
             if (!req.Headers.Contains("Content-Type"))
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -41,12 +43,15 @@ public class CsvJobFunction
 
             var result = await _csvService.ImportCsvAsync(formFile);
 
+            _logger.LogInformation("CSV imported successfully: {fileName}", result.FileName);
+
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(result);
             return response;
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error importing CSV");
             var response = req.CreateResponse(HttpStatusCode.InternalServerError);
             await response.WriteStringAsync($"Error: {ex.Message}");
             return response;

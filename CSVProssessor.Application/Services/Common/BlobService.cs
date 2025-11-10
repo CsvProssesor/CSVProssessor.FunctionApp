@@ -208,6 +208,177 @@ public class BlobService : IBlobService
         }
     }
 
+    /// <summary>
+    /// Zip tất cả file trong bucket và upload file zip lên bucket trong folder "export"
+    /// </summary>
+    /// <param name="outputBlobName">Tên file zip output (vd: "export-20251110.zip")</param>
+    /// <returns>SAS URL của file zip</returns>
+    public async Task<string> ZipAndUploadAllAsync(string outputBlobName)
+    {
+        try
+        {
+            _logger.Info("Starting to zip all files from bucket");
+
+            var client = GetOrCreateClient();
+
+            // Đường dẫn đầy đủ cho file zip trong folder export
+            var exportFolderPath = "export";
+            var zipFilePath = $"{exportFolderPath}/{outputBlobName}";
+
+            // Tạo memory stream để lưu trữ zip
+            using (var zipStream = new MemoryStream())
+            {
+                using (var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
+                {
+                    // List all objects trong bucket
+                    var listArgs = new ListObjectsArgs()
+                        .WithBucket(_bucketName)
+                        .WithRecursive(true);
+
+                    var observable = client.ListObjectsEnumAsync(listArgs);
+
+                    int fileCount = 0;
+                    await foreach (var obj in observable)
+                    {
+                        // Skip folder và file trong export folder
+                        if (obj.IsDir || obj.Key.StartsWith(exportFolderPath))
+                            continue;
+
+                        try
+                        {
+                            // Download file
+                            var fileStream = new MemoryStream();
+                            var getObjectArgs = new GetObjectArgs()
+                                .WithBucket(_bucketName)
+                                .WithObject(obj.Key)
+                                .WithCallbackStream(async stream => { await stream.CopyToAsync(fileStream); });
+
+                            await client.GetObjectAsync(getObjectArgs);
+                            fileStream.Position = 0;
+
+                            // Thêm vào zip archive
+                            var entry = archive.CreateEntry(obj.Key, System.IO.Compression.CompressionLevel.Optimal);
+                            using (var entryStream = entry.Open())
+                            {
+                                await fileStream.CopyToAsync(entryStream);
+                            }
+
+                            fileCount++;
+                            _logger.Info($"Added file to zip: {obj.Key}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warn($"Failed to add file {obj.Key} to zip: {ex.Message}");
+                        }
+                    }
+
+                    _logger.Info($"Total files added to zip: {fileCount}");
+                }
+
+                // Upload zip file lên bucket
+                zipStream.Position = 0;
+                await UploadFileAsync(zipFilePath, zipStream);
+                _logger.Success($"Zip file uploaded: {zipFilePath}");
+            }
+
+            // Tạo SAS URL cho file zip
+            var sasUrl = await GeneratePresignedUrlAsync(zipFilePath);
+            _logger.Success($"SAS URL generated for zip file: {sasUrl}");
+
+            return sasUrl;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Error in ZipAndUploadAllAsync: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Upload single file vào folder "export" trong bucket và trả về SAS URL
+    /// </summary>
+    /// <param name="filePath">Đường dẫn file cần upload (tên file trong bucket)</param>
+    /// <returns>SAS URL của file</returns>
+    public async Task<string> UploadSingleFileAsync(string filePath)
+    {
+        try
+        {
+            _logger.Info($"Uploading single file to export folder: {filePath}");
+
+            var client = GetOrCreateClient();
+
+            // Kiểm tra file tồn tại trong bucket
+            var fileStream = new MemoryStream();
+            try
+            {
+                var getObjectArgs = new GetObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(filePath)
+                    .WithCallbackStream(async stream => { await stream.CopyToAsync(fileStream); });
+
+                await client.GetObjectAsync(getObjectArgs);
+                fileStream.Position = 0;
+            }
+            catch (ObjectNotFoundException)
+            {
+                _logger.Error($"File not found in bucket: {filePath}");
+                throw ErrorHelper.NotFound($"File '{filePath}' không tồn tại trong bucket");
+            }
+
+            // Đặt đường dẫn đầy đủ trong folder export
+            var exportFolderPath = "export";
+            var fileName = Path.GetFileName(filePath);
+            var exportFilePath = $"{exportFolderPath}/{fileName}";
+
+            // Upload file vào folder export
+            await UploadFileAsync(exportFilePath, fileStream);
+            _logger.Success($"File uploaded to export folder: {exportFilePath}");
+
+            // Tạo SAS URL cho file
+            var sasUrl = await GeneratePresignedUrlAsync(exportFilePath);
+            _logger.Success($"SAS URL generated for file: {sasUrl}");
+
+            return sasUrl;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Error in UploadSingleFileAsync: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Generate Presigned URL (SAS URL) cho file
+    /// </summary>
+    private async Task<string> GeneratePresignedUrlAsync(string filePath)
+    {
+        try
+        {
+            var client = GetOrCreateClient();
+            var args = new PresignedGetObjectArgs()
+                .WithBucket(_bucketName)
+                .WithObject(filePath)
+                .WithExpiry(7 * 24 * 60 * 60); // 7 days
+
+            var sasUrl = await client.PresignedGetObjectAsync(args);
+
+            // Replace internal MinIO URL with public URL if configured
+            var minioPublicUrl = Environment.GetEnvironmentVariable("MINIO_PUBLIC_URL");
+            if (!string.IsNullOrWhiteSpace(minioPublicUrl))
+            {
+                var publicUrlBase = minioPublicUrl.Replace("http://", "").Replace("https://", "").TrimEnd('/');
+                sasUrl = sasUrl.Replace("minio:9000", publicUrlBase);
+            }
+
+            return sasUrl;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Error generating presigned URL: {ex.Message}");
+            throw;
+        }
+    }
+
     private IMinioClient GetOrCreateClient()
     {
         if (_minioClient != null)

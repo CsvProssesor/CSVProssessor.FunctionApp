@@ -32,4 +32,18 @@ public interface IBlobService
     /// </summary>
     Task<string> ReplaceImageAsync(Stream newImageStream, string newImageName, string? oldImageUrl,
         string containerPrefix);
+
+    /// <summary>
+    ///     Zip tất cả file trong bucket và upload file zip lên folder "export" trong bucket
+    /// </summary>
+    /// <param name="outputBlobName">Tên file zip output (vd: "csv-export-20251110.zip")</param>
+    /// <returns>SAS URL của file zip</returns>
+    Task<string> ZipAndUploadAllAsync(string outputBlobName);
+
+    /// <summary>
+    ///     Upload single file vào folder "export" trong bucket và trả về SAS URL
+    /// </summary>
+    /// <param name="filePath">Đường dẫn file cần upload (tên file trong bucket)</param>
+    /// <returns>SAS URL của file</returns>
+    Task<string> UploadSingleFileAsync(string filePath);
 }

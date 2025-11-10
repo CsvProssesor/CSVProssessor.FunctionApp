@@ -28,9 +28,10 @@ public class CosmosChangeFeedTrigger
         if (input == null || input.Count == 0)
             return;
 
-        _logger.LogInformation($"[Function-app1]Documents modified: {input.Count}");
+        _logger.LogInformation("CSV records changed: {count}", input.Count);
 
-        foreach (var doc in input) await _csvService.PublishCsvChangeAsync("CosmosChangeDetected", doc);
+        foreach (var doc in input)
+            await _csvService.PublishCsvChangeAsync("CosmosChangeDetected", doc);
     }
 }
 

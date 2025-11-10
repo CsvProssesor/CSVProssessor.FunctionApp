@@ -53,9 +53,6 @@ public class RabbitMqService : IRabbitMqService
             var body = Encoding.UTF8.GetBytes(jsonMessage);
 
             // Khai báo queue với durable option
-            // durable: true - Queue sẽ tồn tại ngay cả khi broker restart
-            // exclusive: false - Có thể được shared bởi nhiều consumer
-            // autoDelete: false - Queue không tự xóa khi consumer disconnect
             await _channel!.QueueDeclareAsync(
                 destination,
                 true, // Queue tồn tại sau khi broker restart
@@ -66,29 +63,23 @@ public class RabbitMqService : IRabbitMqService
             // Cấu hình thuộc tính message
             var properties = new BasicProperties
             {
-                Persistent = true, // Lưu message vào disk (không mất khi restart)
-                ContentType = "application/json", // Định dạng message là JSON
-                Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds()) // Thời gian gửi
+                Persistent = true,
+                ContentType = "application/json",
+                Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds())
             };
 
             // Gửi message tới queue
-            // exchange: string.Empty - Gửi thẳng vào queue (không qua exchange)
-            // routingKey: destination - Tên queue là routing key
             await _channel!.BasicPublishAsync(
-                string.Empty, // Gửi trực tiếp, không qua exchange
-                destination, // Tên queue là routing key
+                string.Empty,
+                destination,
                 false,
                 properties,
                 new ReadOnlyMemory<byte>(body)
             );
-
-            // Ghi log thành công
-            _logger.LogInformation($"Message published successfully to queue '{destination}'. Message: {jsonMessage}");
         }
         catch (Exception ex)
         {
-            // Ghi log lỗi nếu có vấn đề
-            _logger.LogError(ex, $"Error publishing message to RabbitMQ queue '{destination}': {ex.Message}");
+            _logger.LogError(ex, $"Error publishing to queue '{destination}': {ex.Message}");
             throw;
         }
     }
@@ -111,41 +102,33 @@ public class RabbitMqService : IRabbitMqService
             var body = Encoding.UTF8.GetBytes(jsonMessage);
 
             // Khai báo exchange kiểu fanout
-            // fanout: Gửi message tới tất cả các queue đã bind vào exchange này
-            // durable: true - Exchange sẽ tồn tại ngay cả khi broker restart
             await _channel!.ExchangeDeclareAsync(
                 topicName,
-                ExchangeType.Fanout, // Fanout - phát tán cho tất cả subscriber
-                true, // Exchange tồn tại sau khi broker restart
+                ExchangeType.Fanout,
+                true,
                 false
             );
 
             // Cấu hình thuộc tính message
             var properties = new BasicProperties
             {
-                Persistent = true, // Lưu message vào disk (không mất khi restart)
-                ContentType = "application/json", // Định dạng message là JSON
-                Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds()) // Thời gian gửi
+                Persistent = true,
+                ContentType = "application/json",
+                Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds())
             };
 
-            // Gửi message tới topic (exchange)
-            // exchange: topicName - Gửi tới exchange này
-            // routingKey: string.Empty - Fanout không cần routing key, gửi cho tất cả queue bind vào
+            // Gửi message tới topic
             await _channel!.BasicPublishAsync(
                 topicName,
-                string.Empty, // Fanout gửi cho tất cả, không cần routing
+                string.Empty,
                 false,
                 properties,
                 new ReadOnlyMemory<byte>(body)
             );
-
-            // Ghi log thành công
-            _logger.LogInformation($"Message published successfully to topic '{topicName}'. Message: {jsonMessage}");
         }
         catch (Exception ex)
         {
-            // Ghi log lỗi nếu có vấn đề
-            _logger.LogError(ex, $"Error publishing message to RabbitMQ topic '{topicName}': {ex.Message}");
+            _logger.LogError(ex, $"Error publishing to topic '{topicName}': {ex.Message}");
             throw;
         }
     }
@@ -162,36 +145,30 @@ public class RabbitMqService : IRabbitMqService
             // Đảm bảo connection và channel đã khởi tạo
             await EnsureConnectionAsync();
 
-            // Khai báo exchange kiểu fanout nếu chưa tồn tại
-            // durable: true - Exchange tồn tại sau khi broker restart
+            // Khai báo exchange kiểu fanout
             await _channel!.ExchangeDeclareAsync(
                 topicName,
-                ExchangeType.Fanout, // Fanout - phát tán cho tất cả subscriber
-                true, // Exchange tồn tại sau khi broker restart
+                ExchangeType.Fanout,
+                true,
                 false
             );
 
             // Tạo queue tạm thời (auto-generated name)
-            // exclusive: true - Queue này chỉ dùng riêng cho connection này
-            // autoDelete: true - Queue sẽ tự xóa khi connection đóng
             var queueDeclareOk = await _channel!.QueueDeclareAsync(
-                string.Empty, // String rỗng -> RabbitMQ tạo tên tự động
-                false, // Queue tạm thời, không cần lưu trữ
-                true, // Chỉ dùng cho connection này
+                string.Empty,
+                false,
+                true,
                 true
             );
 
             var queueName = queueDeclareOk.QueueName;
 
-            // Bind queue vào exchange (fanout)
-            // routing key không quan trọng với fanout exchange
+            // Bind queue vào exchange
             await _channel!.QueueBindAsync(
                 queueName,
                 topicName,
-                string.Empty // Fanout không cần routing key
+                string.Empty
             );
-
-            _logger.LogInformation($"Subscribed to topic '{topicName}' with queue '{queueName}'");
 
             // Tạo consumer để lắng nghe message
             var consumer = new AsyncEventingBasicConsumer(_channel!);
@@ -205,38 +182,32 @@ public class RabbitMqService : IRabbitMqService
                     var body = ea.Body.ToArray();
                     var messageJson = Encoding.UTF8.GetString(body);
 
-                    _logger.LogInformation(
-                        $"[Topic Subscriber] Received message from topic '{topicName}': {messageJson}");
-
                     // Gọi handler để xử lý message
                     await handler(messageJson);
 
-                    // Acknowledge message - báo hiệu RabbitMQ đã xử lý xong
+                    // Acknowledge message
                     await _channel!.BasicAckAsync(ea.DeliveryTag, false);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, $"Error processing message from topic '{topicName}': {ex.Message}");
+                    _logger.LogError(ex, $"Error processing message from topic '{topicName}'");
 
-                    // Negative acknowledge - message sẽ được requeue để xử lý lại
+                    // Negative acknowledge - message sẽ được requeue
                     await _channel!.BasicNackAsync(ea.DeliveryTag, false, true);
                 }
             };
 
             // Bắt đầu consume message từ queue
-            // autoAck: false - Phải acknowledge thủ công khi xử lý xong
             await _channel!.BasicConsumeAsync(
                 queueName,
-                false, // Manual acknowledgment
+                false,
                 $"{topicName}-subscriber-{Guid.NewGuid():N}",
                 consumer
             );
-
-            _logger.LogInformation($"Started consuming messages from topic '{topicName}'");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Error subscribing to RabbitMQ topic '{topicName}': {ex.Message}");
+            _logger.LogError(ex, $"Error subscribing to topic '{topicName}'");
             throw;
         }
     }
@@ -258,16 +229,12 @@ public class RabbitMqService : IRabbitMqService
 
             try
             {
-                _logger.LogInformation("Attempting to connect to RabbitMQ...");
                 _connection = await _connectionFactory.CreateConnectionAsync();
-                _logger.LogInformation("RabbitMQ connection created successfully");
-
                 _channel = await _connection.CreateChannelAsync();
-                _logger.LogInformation("RabbitMQ channel created successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to connect to RabbitMQ: {ex.Message}");
+                _logger.LogError(ex, "Failed to connect to RabbitMQ");
                 throw;
             }
         }

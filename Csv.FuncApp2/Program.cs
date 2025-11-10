@@ -1,4 +1,5 @@
 ﻿using Csv.FuncApp2.IOContainer;
+using CSVProssessor.Application.Interfaces;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,4 +14,12 @@ builder.Services
     .AddApplicationInsightsTelemetryWorkerService()
     .ConfigureFunctionsApplicationInsights();
 
-builder.Build().Run();
+var host = builder.Build();
+
+using (var scope = host.Services.CreateScope())
+{
+    var csvService = scope.ServiceProvider.GetRequiredService<ICsvService>();
+    _ = csvService.LogCsvChangesAsync();
+}
+
+host.Run();

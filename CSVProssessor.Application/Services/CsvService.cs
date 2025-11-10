@@ -46,13 +46,10 @@ public class CsvService : ICsvService
         var uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8); // Short GUID (8 chars)
         var uniqueFileName = $"{fileNameWithoutExtension}_{timestamp}_{uniqueId}{fileExtension}";
 
-        // Đọc file stream từ IFormFile
         using var stream = file.OpenReadStream();
 
-        // 1. tải file lên MinIO blob storage với unique name
         await _blobService.UploadFileAsync(uniqueFileName, stream);
 
-        // 2. ghi nhận job vào database
         var jobId = Guid.NewGuid();
         var csvJob = new CsvJob
         {
@@ -68,7 +65,6 @@ public class CsvService : ICsvService
         await _unitOfWork.CsvJobs.AddAsync(csvJob);
         await _unitOfWork.SaveChangesAsync();
 
-        // 3. Prepare and publish message to RabbitMQ queue
         var message = new CsvImportMessage
         {
             JobId = jobId,
@@ -76,10 +72,8 @@ public class CsvService : ICsvService
             UploadedAt = DateTime.UtcNow
         };
 
-        // Publish message vào queue cho background service xử lý
         await _rabbitMqService.PublishAsync("csv-import-queue", message);
 
-        // Return response DTO
         return new ImportCsvResponseDto
         {
             JobId = jobId,
@@ -132,15 +126,12 @@ public class CsvService : ICsvService
         };
 
         await _rabbitMqService.PublishToTopicAsync("csv-changes-topic", message);
-
-        Console.WriteLine($"[CsvService] Published change '{changeType}' at {DateTime.UtcNow:u}");
     }
 
     public async Task LogCsvChangesAsync()
     {
         await _rabbitMqService.SubscribeToTopicAsync("csv-changes-topic", async message =>
         {
-            Console.WriteLine("[CsvService-Logger] Received message:");
             Console.WriteLine(message);
             await Task.CompletedTask;
         });
