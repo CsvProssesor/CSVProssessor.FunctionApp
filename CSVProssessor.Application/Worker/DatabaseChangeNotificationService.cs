@@ -79,16 +79,19 @@ public class DatabaseChangeNotificationService : BackgroundService
                 {
                     // Giải mã message từ byte array
                     var json = Encoding.UTF8.GetString(ea.Body.ToArray());
+                    var changeData = JsonSerializer.Deserialize<dynamic>(json);
+                    
                     scopedLogger.Info($"[DatabaseChangeNotification] Received change notification: {json}");
 
-                    // Send email notification
+                    // Chỉ gửi MỘT email thông báo có thay đổi database
+                    // Không gửi nhiều email cho mỗi bản ghi
                     var emailRequest = new EmailRequestDto
                     {
                         To = "phuctg1@fpt.com"
                     };
 
                     await emailService.SendDatabaseChanges(emailRequest);
-                    scopedLogger.Success($"[DatabaseChangeNotification] Email sent successfully for database change");
+                    scopedLogger.Success($"[DatabaseChangeNotification] Email notification sent for database change batch");
 
                     // ACK - xác nhận đã xử lý thành công
                     await channel.BasicAckAsync(ea.DeliveryTag, false);
