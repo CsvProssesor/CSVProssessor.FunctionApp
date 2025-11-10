@@ -4,6 +4,7 @@ using CSVProssessor.Infrastructure.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Resend;
 
+namespace CSVProssessor.Application.Services.Common;
 
 public class EmailService : IEmailService
 {
