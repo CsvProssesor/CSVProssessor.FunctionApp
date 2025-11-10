@@ -24,6 +24,9 @@ public class CosmosDbContext : IDisposable, IAsyncDisposable
                     ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
                 };
                 return new HttpClient(handler);
+            },SerializerOptions = new CosmosSerializationOptions()
+            {
+                PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
             }
         };
         _cosmosClient = new CosmosClient(connectionString, options);
