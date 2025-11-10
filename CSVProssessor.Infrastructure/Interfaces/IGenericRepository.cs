@@ -1,5 +1,5 @@
-﻿using CSVProssessor.Domain.Entities;
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
+using CSVProssessor.Domain.Entities;
 
 namespace CSVProssessor.Infrastructure.Interfaces;
 

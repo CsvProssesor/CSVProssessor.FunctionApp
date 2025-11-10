@@ -1,6 +1,6 @@
 using CSVProssessor.Domain.Entities;
-using Microsoft.Azure.Cosmos;
 using CSVProssessor.Infrastructure.Interfaces;
+using Microsoft.Azure.Cosmos;
 
 namespace CSVProssessor.Infrastructure.Repositories;
 

@@ -2,7 +2,7 @@ using CSVProssessor.Application.Interfaces;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
-namespace Csv.FuncApp2.Functions;
+namespace Csv.FuncApp1.Functions;
 
 public class CosmosChangeFeedTrigger
 {

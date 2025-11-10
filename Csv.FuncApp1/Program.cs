@@ -4,7 +4,6 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.Services.SetupIocContainer();
@@ -15,17 +14,12 @@ builder.Services
     .AddApplicationInsightsTelemetryWorkerService()
     .ConfigureFunctionsApplicationInsights();
 
-builder.Services.AddLogging(logging =>
-{
-    logging.AddConsole();
-});
-
 var host = builder.Build();
 
 using (var scope = host.Services.CreateScope())
 {
     var csvService = scope.ServiceProvider.GetRequiredService<ICsvService>();
-    _ = csvService.LogCsvChangesAsync(); 
+    _ = csvService.LogCsvChangesAsync();
 }
 
 host.Run();

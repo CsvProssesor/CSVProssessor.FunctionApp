@@ -1,14 +1,15 @@
+using System.Linq.Expressions;
+using System.Net;
 using CSVProssessor.Domain.Entities;
 using CSVProssessor.Infrastructure.Interfaces;
 using Microsoft.Azure.Cosmos;
-using System.Linq.Expressions;
 
 namespace CSVProssessor.Infrastructure.Repositories;
 
 public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEntity : BaseEntity
 {
-    private readonly Container _container;
     private readonly IClaimsService _claimsService;
+    private readonly Container _container;
     private readonly ICurrentTime _timeService;
 
     public CosmosRepository(Container container, ICurrentTime timeService, IClaimsService claimsService)
@@ -69,10 +70,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
         }
 
         // Apply predicate if provided
-        if (predicate != null)
-        {
-            results = results.Where(predicate.Compile()).ToList();
-        }
+        if (predicate != null) results = results.Where(predicate.Compile()).ToList();
 
         return results;
     }
@@ -94,7 +92,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
 
             return null;
         }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
@@ -137,7 +135,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
     public async Task<bool> SoftRemoveRangeById(List<Guid> entitiesId)
     {
         var queryDefinition = new QueryDefinition(
-            "SELECT * FROM c WHERE c.IsDeleted = false AND ARRAY_CONTAINS(@ids, c.id)")
+                "SELECT * FROM c WHERE c.IsDeleted = false AND ARRAY_CONTAINS(@ids, c.id)")
             .WithParameter("@ids", entitiesId.Select(x => x.ToString()).ToList());
 
         var query = _container.GetItemQueryIterator<TEntity>(queryDefinition);
@@ -198,10 +196,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
             var response = await query.ReadNextAsync();
             var result = response.FirstOrDefault();
 
-            if (result != null && predicate != null && !predicate.Compile().Invoke(result))
-            {
-                return null;
-            }
+            if (result != null && predicate != null && !predicate.Compile().Invoke(result)) return null;
 
             return result;
         }
@@ -294,7 +289,7 @@ public class CosmosRepository<TEntity> : IGenericRepository<TEntity> where TEnti
     }
 
     /// <summary>
-    /// Get partition key value from entity - override in derived classes if needed
+    ///     Get partition key value from entity - override in derived classes if needed
     /// </summary>
     protected virtual string GetPartitionKey(TEntity entity)
     {
