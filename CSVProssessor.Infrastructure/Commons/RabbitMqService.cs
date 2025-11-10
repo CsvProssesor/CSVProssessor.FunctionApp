@@ -1,6 +1,7 @@
 ﻿using CSVProssessor.Infrastructure.Interfaces;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
 
@@ -15,10 +16,10 @@ namespace CSVProssessor.Infrastructure.Commons
         private readonly IConnectionFactory _connectionFactory;
 
         // Lazy connection - chỉ tạo khi cần
-        private IConnection _connection;
+        private IConnection? _connection;
 
         // Channel - Kênh giao tiếp để gửi/nhận message
-        private IChannel _channel;
+        private IChannel? _channel;
 
         // Logger - Ghi log hoạt động của dịch vụ
         private readonly ILogger<RabbitMqService> _logger;
@@ -33,6 +34,8 @@ namespace CSVProssessor.Infrastructure.Commons
             _connectionFactory = connectionFactory;
             _logger = logger;
         }
+        
+        
 
         /// <summary>
         /// Đảm bảo connection và channel đã được khởi tạo
@@ -90,7 +93,7 @@ namespace CSVProssessor.Infrastructure.Commons
                 // durable: true - Queue sẽ tồn tại ngay cả khi broker restart
                 // exclusive: false - Có thể được shared bởi nhiều consumer
                 // autoDelete: false - Queue không tự xóa khi consumer disconnect
-                await _channel.QueueDeclareAsync(
+                await _channel!.QueueDeclareAsync(
                     queue: destination,
                     durable: true,              // Queue tồn tại sau khi broker restart
                     exclusive: false,           // Có thể dùng chung
@@ -109,7 +112,7 @@ namespace CSVProssessor.Infrastructure.Commons
                 // Gửi message tới queue
                 // exchange: string.Empty - Gửi thẳng vào queue (không qua exchange)
                 // routingKey: destination - Tên queue là routing key
-                await _channel.BasicPublishAsync(
+                await _channel!.BasicPublishAsync(
                     exchange: string.Empty,     // Gửi trực tiếp, không qua exchange
                     routingKey: destination,    // Tên queue là routing key
                     mandatory: false,
@@ -138,6 +141,9 @@ namespace CSVProssessor.Infrastructure.Commons
         {
             try
             {
+                // Đảm bảo connection và channel đã khởi tạo
+                await EnsureConnectionAsync();
+
                 // Chuyển đổi message thành chuỗi JSON
                 var jsonMessage = JsonSerializer.Serialize(message);
                 var body = Encoding.UTF8.GetBytes(jsonMessage);
@@ -145,7 +151,7 @@ namespace CSVProssessor.Infrastructure.Commons
                 // Khai báo exchange kiểu fanout
                 // fanout: Gửi message tới tất cả các queue đã bind vào exchange này
                 // durable: true - Exchange sẽ tồn tại ngay cả khi broker restart
-                await _channel.ExchangeDeclareAsync(
+                await _channel!.ExchangeDeclareAsync(
                     exchange: topicName,
                     type: ExchangeType.Fanout, // Fanout - phát tán cho tất cả subscriber
                     durable: true,              // Exchange tồn tại sau khi broker restart
@@ -164,7 +170,7 @@ namespace CSVProssessor.Infrastructure.Commons
                 // Gửi message tới topic (exchange)
                 // exchange: topicName - Gửi tới exchange này
                 // routingKey: string.Empty - Fanout không cần routing key, gửi cho tất cả queue bind vào
-                await _channel.BasicPublishAsync(
+                await _channel!.BasicPublishAsync(
                     exchange: topicName,
                     routingKey: string.Empty,  // Fanout gửi cho tất cả, không cần routing
                     mandatory: false,
@@ -179,6 +185,98 @@ namespace CSVProssessor.Infrastructure.Commons
             {
                 // Ghi log lỗi nếu có vấn đề
                 _logger.LogError(ex, $"Error publishing message to RabbitMQ topic '{topicName}': {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Subscribe tới topic (fanout exchange) và lắng nghe message từ các publisher
+        /// </summary>
+        /// <param name="topicName">Tên của topic (exchange)</param>
+        /// <param name="handler">Hàm xử lý message nhận được (nhận vào message dạng string JSON)</param>
+        public async Task SubscribeToTopicAsync(string topicName, Func<string, Task> handler)
+        {
+            try
+            {
+                // Đảm bảo connection và channel đã khởi tạo
+                await EnsureConnectionAsync();
+
+                // Khai báo exchange kiểu fanout nếu chưa tồn tại
+                // durable: true - Exchange tồn tại sau khi broker restart
+                await _channel!.ExchangeDeclareAsync(
+                    exchange: topicName,
+                    type: ExchangeType.Fanout, // Fanout - phát tán cho tất cả subscriber
+                    durable: true,              // Exchange tồn tại sau khi broker restart
+                    autoDelete: false,          // Exchange không tự xóa
+                    arguments: null
+                );
+
+                // Tạo queue tạm thời (auto-generated name)
+                // exclusive: true - Queue này chỉ dùng riêng cho connection này
+                // autoDelete: true - Queue sẽ tự xóa khi connection đóng
+                var queueDeclareOk = await _channel!.QueueDeclareAsync(
+                    queue: string.Empty,        // String rỗng -> RabbitMQ tạo tên tự động
+                    durable: false,             // Queue tạm thời, không cần lưu trữ
+                    exclusive: true,            // Chỉ dùng cho connection này
+                    autoDelete: true,           // Tự xóa khi subscriber disconnect
+                    arguments: null
+                );
+
+                var queueName = queueDeclareOk.QueueName;
+
+                // Bind queue vào exchange (fanout)
+                // routing key không quan trọng với fanout exchange
+                await _channel!.QueueBindAsync(
+                    queue: queueName,
+                    exchange: topicName,
+                    routingKey: string.Empty    // Fanout không cần routing key
+                );
+
+                _logger.LogInformation($"Subscribed to topic '{topicName}' with queue '{queueName}'");
+
+                // Tạo consumer để lắng nghe message
+                var consumer = new AsyncEventingBasicConsumer(_channel!);
+
+                // Đăng ký handler khi nhận được message
+                consumer.ReceivedAsync += async (model, ea) =>
+                {
+                    try
+                    {
+                        // Lấy nội dung message từ body
+                        var body = ea.Body.ToArray();
+                        var messageJson = Encoding.UTF8.GetString(body);
+
+                        _logger.LogInformation($"[Topic Subscriber] Received message from topic '{topicName}': {messageJson}");
+
+                        // Gọi handler để xử lý message
+                        await handler(messageJson);
+
+                        // Acknowledge message - báo hiệu RabbitMQ đã xử lý xong
+                        await _channel!.BasicAckAsync(ea.DeliveryTag, false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error processing message from topic '{topicName}': {ex.Message}");
+                        
+                        // Negative acknowledge - message sẽ được requeue để xử lý lại
+                        await _channel!.BasicNackAsync(ea.DeliveryTag, false, true);
+                    }
+                };
+
+                // Bắt đầu consume message từ queue
+                // autoAck: false - Phải acknowledge thủ công khi xử lý xong
+                await _channel!.BasicConsumeAsync(
+                    queue: queueName,
+                    autoAck: false,             // Manual acknowledgment
+                    consumerTag: $"{topicName}-subscriber-{Guid.NewGuid():N}",
+                    consumer: consumer
+                );
+
+                _logger.LogInformation($"Started consuming messages from topic '{topicName}'");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error subscribing to RabbitMQ topic '{topicName}': {ex.Message}");
                 throw;
             }
         }

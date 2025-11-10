@@ -5,7 +5,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using System.Net;
 
-namespace Csv.FuncApp1
+namespace Csv.FuncApp1.Functions
 {
     public class CsvJobFunction
     {

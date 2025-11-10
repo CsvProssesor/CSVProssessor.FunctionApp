@@ -13,9 +13,9 @@ namespace CSVProssessor.Application.Services
 {
     public class CsvService : ICsvService
     {
-        public readonly IUnitOfWork _unitOfWork;
-        public readonly IBlobService _blobService;
-        public readonly IRabbitMqService _rabbitMqService;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly IBlobService _blobService;
+        private readonly IRabbitMqService _rabbitMqService;
 
         public CsvService(IUnitOfWork unitOfWork, IBlobService blobService, IRabbitMqService rabbitMqService)
         {
@@ -87,12 +87,7 @@ namespace CSVProssessor.Application.Services
                 Message = $"File CSV đã được tải lên thành công với tên: {uniqueFileName}. Background service sẽ xử lý trong thời gian sớm nhất."
             };
         }
-
-        /// <summary>
-        /// Process CSV import: download file from MinIO, parse it, and save records to database
-        /// Called by CsvImportQueueListenerService
-        /// Handles: Download → Parse CSV → Save to DB → Update job status
-        /// </summary>
+        
         public async Task SaveCsvRecordsAsync(Guid jobId, string fileName)
         {
             // 1. Download file from MinIO
@@ -126,83 +121,29 @@ namespace CSVProssessor.Application.Services
                 await _unitOfWork.SaveChangesAsync();
             }
         }
-
-
-
-        /// <summary>
-        /// Detect changes and publish notification to RabbitMQ topic "csv-changes-topic"
-        /// Called by ChangeDetectionBackgroundService to check for changes and notify all instances.
-        /// </summary>
-        /// <param name="request">Request containing detection parameters</param>
-        /// <returns>Response containing detected changes and publishing status</returns>
-        public async Task<DetectChangesResponseDto> DetectAndPublishChangesAsync(DetectChangesRequestDto request)
+        
+        public async Task PublishCsvChangeAsync(string changeType, object changedDocument)
         {
-            DateTime timeThreshold;
-
-            if (request.LastCheckTime.HasValue)
+            var message = new
             {
-                // Use provided lastCheckTime
-                timeThreshold = request.LastCheckTime.Value;
-            }
-            else
-            {
-                // Calculate time threshold based on minutesBack
-                timeThreshold = DateTime.UtcNow.AddMinutes(-request.MinutesBack);
-            }
-
-            // Query records created or updated since time threshold
-            var records = await _unitOfWork.CsvRecords.GetAllAsync(x =>
-                (x.CreatedAt >= timeThreshold || (x.UpdatedAt.HasValue && x.UpdatedAt >= timeThreshold))
-                && !x.IsDeleted
-            );
-
-            bool publishedToTopic = false;
-
-            // Publish notification if changes detected and publishToTopic is true
-            if (request.PublishToTopic && records.Count > 0)
-            {
-                var notificationMessage = new CsvChangeNotificationMessage
-                {
-                    ChangeType = request.ChangeType,
-                    RecordIds = records.Select(x => x.Id).ToList(),
-                    TotalChanges = records.Count,
-                    DetectedAt = DateTime.UtcNow,
-                    CheckStartTime = timeThreshold,
-                    CheckEndTime = DateTime.UtcNow,
-                    InstanceName = request.InstanceName
-                };
-
-                // Publish to topic - all subscribed instances will receive this message
-                await _rabbitMqService.PublishToTopicAsync("csv-changes-topic", notificationMessage);
-                publishedToTopic = true;
-            }
-
-            // Map records to DTO
-            var recordDtos = records.Select(x => new CsvRecordDto
-            {
-                Id = x.Id,
-                JobId = x.JobId,
-                FileName = x.FileName,
-                ImportedAt = x.ImportedAt,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            }).ToList();
-
-            // Build response
-            var response = new DetectChangesResponseDto
-            {
-                Changes = recordDtos,
-                TotalChanges = records.Count,
-                PublishedToTopic = publishedToTopic,
-                DetectedAt = DateTime.UtcNow,
-                CheckStartTime = timeThreshold,
-                CheckEndTime = DateTime.UtcNow,
-                Message = records.Count > 0
-                    ? $"Detected {records.Count} changes. Published: {publishedToTopic}"
-                    : "No changes detected"
+                ChangeType = changeType,
+                Document = changedDocument,
+                PublishedAt = DateTime.UtcNow
             };
 
-            return response;
+            await _rabbitMqService.PublishToTopicAsync("csv-changes-topic", message);
+
+            Console.WriteLine($"[CsvService] Published change '{changeType}' at {DateTime.UtcNow:u}");
+        }
+
+        public async Task LogCsvChangesAsync()
+        {
+            await _rabbitMqService.SubscribeToTopicAsync("csv-changes-topic", async (message) =>
+            {
+                Console.WriteLine("[CsvService-Logger] Received message:");
+                Console.WriteLine(message); 
+                await Task.CompletedTask;
+            });
         }
 
         public async Task<ListCsvFilesResponseDto> ListAllCsvFilesAsync()

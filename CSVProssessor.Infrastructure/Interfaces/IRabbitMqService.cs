@@ -19,5 +19,8 @@
         /// <param name="message">Đối tượng message cần gửi (sẽ được JSON serialize)</param>
         /// <returns>Task đại diện cho thao tác bất đồng bộ</returns>
         Task PublishToTopicAsync<T>(string topicName, T message);
+        
+        Task SubscribeToTopicAsync(string topicName, Func<string, Task> handler);
+
     }
 }
