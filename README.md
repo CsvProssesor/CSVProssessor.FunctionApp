@@ -463,17 +463,31 @@ public async Task<HttpResponseData> UploadCsv(
 - Application Insights: Enabled
 
 ### Connection Strings (local.settings.json)
+
+**For Docker/Emulator Development:**
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "CosmosDbConnectionString": "AccountEndpoint=https://host.docker.internal:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;DisableServerCertificateValidation=True"
+  }
+}
+```
+
+**For Azure Cloud Production:**
 ```json
 {
   "IsEncrypted": false,
   "Values": {
     "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;...",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-    "COSMOS_CONNECTION_STRING": "AccountEndpoint=https://csv-processor-db.documents.azure.com:443/;...",
+    "CosmosDbConnectionString": "AccountEndpoint=https://csv-processor-db.documents.azure.com:443/;...",
     "SERVICE_BUS_CONNECTION_STRING": "Endpoint=sb://csv-processor-sb.servicebus.windows.net/;...",
     "STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=https;...",
-    "COSMOS_DATABASE_ID": "CsvProcessor",
-    "COSMOS_CONTAINER_ID": "csv-records"
+    "COSMOS_DATABASE_ID": "CSVProcessor",
+    "COSMOS_CONTAINER_ID": "CsvRecords"
   }
 }
 ```
