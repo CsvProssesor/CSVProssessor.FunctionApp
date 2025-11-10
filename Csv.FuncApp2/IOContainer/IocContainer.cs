@@ -49,7 +49,6 @@ public static class IocContainer
 
         // Register BackgroundServices
         services.AddHostedService<CsvImportQueueListenerService>();
-        services.AddHostedService<DatabaseChangeNotificationService>();
         //services.AddHostedService<ChangeDetectionBackgroundService>();
 
         // Configure RabbitMQ Connection Factory (not connection itself)

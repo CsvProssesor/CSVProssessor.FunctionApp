@@ -32,6 +32,21 @@ public class EmailService : IEmailService
         await SendEmailAsync(request.To, subject, htmlContent);
     }
 
+    public async Task SendDatabaseChangesWithSource(EmailRequestDto request, string functionAppName)
+    {
+        var subject = $"Database Change Notification - {functionAppName}";
+        var htmlContent = $@"
+            <h2>Database Change Detected</h2>
+            <p>Hello,</p>
+            <p>There has been a change detected in your database.</p>
+            <p><strong>Source: {functionAppName}</strong></p>
+            <p>Please log in to your account for more details.</p>
+            <p>Best regards,<br/>CSV Processor Team</p>
+        ";
+
+        await SendEmailAsync(request.To, subject, htmlContent);
+    }
+
     private async Task SendEmailAsync(string to, string subject, string htmlContent)
     {
         var message = new EmailMessage
